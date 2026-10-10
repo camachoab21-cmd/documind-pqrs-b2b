@@ -274,13 +274,14 @@ CREATE OR REPLACE FUNCTION pqrs_listar() RETURNS JSONB LANGUAGE sql STABLE AS $$
  'cumplimiento_pct',CASE WHEN COUNT(*)=0 THEN NULL ELSE round(100.0*COUNT(*) FILTER(WHERE
  (estado IN ('RESUELTO','CERRADO') AND fecha_resolucion IS NOT NULL AND fecha_resolucion<=sla_fecha_limite) OR
  (estado NOT IN ('RESUELTO','CERRADO') AND NOW()<=sla_fecha_limite))/COUNT(*)) END,
+ 'satisfaccion_promedio',CASE WHEN COUNT(satisfaccion_score)=0 THEN NULL ELSE round(AVG(satisfaccion_score)::numeric,1) END,
  'total_listado',LEAST(COUNT(*),100),'limite_listado',100,
  'tickets',COALESCE((SELECT jsonb_agg(to_jsonb(x)-'payload_original'-'request_id'-'confirmacion_error'-'alerta_error' ORDER BY x.id DESC) FROM (
   SELECT s.*,s.cliente_email AS email,COALESCE((SELECT jsonb_agg(jsonb_build_object('autor',a.autor_nombre,'tipo',a.autor_tipo,'mensaje',a.mensaje,'fecha',a.created_at,
    'es_nota_interna',a.es_nota_interna,'estado_anterior',a.estado_anterior,'estado_nuevo',a.estado_nuevo) ORDER BY a.id)
    FROM pqrs_actividades a WHERE a.ticket_id=s.ticket_id),'[]'::jsonb) actividades
   FROM pqrs_solicitudes s ORDER BY s.id DESC LIMIT 100) x),'[]'::jsonb),
- 'agentes',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',id,'nombre',nombre,'departamento',departamento) ORDER BY nombre)
+ 'agentes',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',id,'nombre',nombre,'departamento',departamento,'rol',rol) ORDER BY nombre)
   FROM usuarios_agentes WHERE activo),'[]'::jsonb)) FROM pqrs_solicitudes;
 $$;
 
@@ -290,6 +291,7 @@ BEGIN
  SELECT jsonb_build_object('ticket_id',s.ticket_id,'cliente_nombre',s.cliente_nombre,'tipo',s.tipo,'prioridad',s.prioridad,
  'departamento',s.departamento,'asunto',s.asunto,'descripcion',s.descripcion,'estado',s.estado,'sla_horas',s.sla_horas,
  'sla_fecha_limite',s.sla_fecha_limite,'fecha_radicacion',s.fecha_radicacion,'fecha_resolucion',s.fecha_resolucion,
+ 'satisfaccion_score',s.satisfaccion_score,
  'timeline',COALESCE((SELECT jsonb_agg(jsonb_build_object('autor',a.autor_nombre,'tipo',a.autor_tipo,'mensaje',a.mensaje,'fecha',a.created_at) ORDER BY a.id)
  FROM pqrs_actividades a WHERE a.ticket_id=s.ticket_id AND NOT a.es_nota_interna),'[]'::jsonb)) INTO t
  FROM pqrs_solicitudes s WHERE s.ticket_id=codigo AND s.tracking_token=clave;
@@ -321,6 +323,27 @@ BEGIN
  WHERE id=s.id RETURNING * INTO s;
  INSERT INTO pqrs_actividades(ticket_id,autor_nombre,autor_tipo,es_nota_interna,mensaje,estado_anterior,estado_nuevo,operation_id,datos_operacion,version_resultante)
  VALUES(s.ticket_id,a.nombre,'AGENTE',(p->>'es_nota_interna')::boolean,p->>'mensaje_resolucion',old_estado,destino,(p->>'operation_id')::uuid,p,s.version);
- RETURN jsonb_build_object('status','success','codigo',200,'duplicada',false,'ticket_id',s.ticket_id,'estado',s.estado,'version',s.version,'mensaje','Ticket actualizado correctamente');
+ RETURN jsonb_build_object('status','success','codigo',200,'duplicada',false,'ticket_id',s.ticket_id,'estado',s.estado,'version',s.version,'mensaje','Ticket actualizado correctamente',
+   'cliente_email',s.cliente_email,'cliente_nombre',s.cliente_nombre,'asunto',s.asunto,'agente_nombre',a.nombre);
+END $$;
+
+CREATE OR REPLACE FUNCTION pqrs_calificar(codigo TEXT, clave UUID, puntuacion INT, retroalimentacion TEXT) RETURNS JSONB LANGUAGE plpgsql AS $$
+DECLARE s pqrs_solicitudes%ROWTYPE;
+BEGIN
+ IF puntuacion NOT BETWEEN 1 AND 5 THEN
+  RETURN jsonb_build_object('status','error','codigo',400,'mensaje','La calificación debe ser de 1 a 5 estrellas');
+ END IF;
+ SELECT * INTO s FROM pqrs_solicitudes WHERE ticket_id=codigo AND tracking_token=clave FOR UPDATE;
+ IF NOT FOUND THEN
+  RETURN jsonb_build_object('status','error','codigo',404,'mensaje','Radicado o clave de consulta incorrectos');
+ END IF;
+ IF s.estado NOT IN ('RESUELTO','CERRADO') THEN
+  RETURN jsonb_build_object('status','error','codigo',400,'mensaje','Solo puede calificar solicitudes resueltas o cerradas');
+ END IF;
+ UPDATE pqrs_solicitudes SET satisfaccion_score=puntuacion WHERE id=s.id RETURNING * INTO s;
+ INSERT INTO pqrs_actividades(ticket_id,autor_nombre,autor_tipo,es_nota_interna,mensaje)
+ VALUES(s.ticket_id,s.cliente_nombre,'CLIENTE',false,
+   'Calificación del solicitante: '||puntuacion||'/5 estrellas.'||CASE WHEN retroalimentacion IS NOT NULL AND length(trim(retroalimentacion))>0 THEN ' Comentario: '||left(trim(retroalimentacion),500) ELSE '' END);
+ RETURN jsonb_build_object('status','success','codigo',200,'mensaje','¡Gracias por calificar la atención!','score',puntuacion,'ticket_id',s.ticket_id);
 END $$;
 COMMIT;

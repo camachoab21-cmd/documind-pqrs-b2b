@@ -669,6 +669,133 @@ const workflow = {
         -200,
         1750
       ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "calificar-ticket",
+        "responseMode": "responseNode",
+        "authentication": "none",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "c1000001-0001-4000-8000-000000000001",
+      "name": "Webhook Calificar Ticket",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -1400,
+        2200
+      ],
+      "webhookId": "c1000001-csat-4000-8000-calificar00001"
+    },
+    {
+      "parameters": {
+        "jsCode": "const d=$json.body ?? $json;\nconst errors=[];\nconst uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;\nconst obj=d&&typeof d==='object'&&!Array.isArray(d)?d:{};\nconst str=k=>typeof obj[k]==='string'?obj[k].trim():'';\nconst ticket_id=str('ticket_id').toUpperCase();\nconst token=str('token').toLowerCase();\nconst puntuacion=Number(obj.puntuacion);\nconst retroalimentacion=str('retroalimentacion');\nif(!/^PQRS-\\d{4}-\\d{6,20}$/.test(ticket_id))errors.push('Radicado inválido');\nif(!uuid.test(token))errors.push('Clave privada de consulta inválida');\nif(!Number.isInteger(puntuacion)||puntuacion<1||puntuacion>5)errors.push('La puntuación debe ser entre 1 y 5');\nif(retroalimentacion.length>500)errors.push('El comentario admite máximo 500 caracteres');\nif(errors.length)return [{json:{valido:false,codigo:400,respuesta:{status:'error',codigo:400,mensaje:'Datos de calificación inválidos',errores:errors}}}];\nreturn [{json:{valido:true,datos:{ticket_id,token,puntuacion,retroalimentacion}}}];"
+      },
+      "id": "c1000002-0002-4000-8000-000000000002",
+      "name": "Validar Calificación",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1160,
+        2200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.valido }}",
+              "operation": "equal",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "c1000003-0003-4000-8000-000000000003",
+      "name": "¿Calificación válida?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -920,
+        2200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT pqrs_calificar($1::text,$2::uuid,$3::int,$4::text) AS resultado;",
+        "options": {
+          "queryReplacement": "={{ [$json.datos.ticket_id,$json.datos.token,$json.datos.puntuacion,$json.datos.retroalimentacion] }}"
+        }
+      },
+      "id": "c1000004-0004-4000-8000-000000000004",
+      "name": "Guardar Calificación en Postgres",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -680,
+        2120
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{json:{codigo:$json.resultado.codigo,respuesta:$json.resultado}}];"
+      },
+      "id": "c1000005-0005-4000-8000-000000000005",
+      "name": "Preparar respuesta calificación",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -440,
+        2120
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{json:{codigo:503,respuesta:{status:'error',codigo:503,mensaje:'No se pudo registrar la calificación'}}}];"
+      },
+      "id": "c1000006-0006-4000-8000-000000000006",
+      "name": "Error de calificación",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -440,
+        2320
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.respuesta }}",
+        "options": {
+          "responseCode": "={{ $json.codigo }}",
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              },
+              {
+                "name": "Referrer-Policy",
+                "value": "no-referrer"
+              }
+            ]
+          }
+        }
+      },
+      "id": "c1000007-0007-4000-8000-000000000007",
+      "name": "Respuesta Calificación Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -200,
+        2200
+      ]
     }
   ],
   "connections": {
@@ -1099,6 +1226,86 @@ const workflow = {
         [
           {
             "node": "Respuesta Actualización Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Calificar Ticket": {
+      "main": [
+        [
+          {
+            "node": "Validar Calificación",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar Calificación": {
+      "main": [
+        [
+          {
+            "node": "¿Calificación válida?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Calificación válida?": {
+      "main": [
+        [
+          {
+            "node": "Guardar Calificación en Postgres",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respuesta Calificación Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar Calificación en Postgres": {
+      "main": [
+        [
+          {
+            "node": "Preparar respuesta calificación",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error de calificación",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar respuesta calificación": {
+      "main": [
+        [
+          {
+            "node": "Respuesta Calificación Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error de calificación": {
+      "main": [
+        [
+          {
+            "node": "Respuesta Calificación Webhook",
             "type": "main",
             "index": 0
           }

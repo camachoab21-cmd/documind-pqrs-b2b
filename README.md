@@ -22,7 +22,12 @@ El problema empresarial es la recepción dispersa de PQRS, la falta de priorizac
 | Integrar al menos tres servicios o componentes | Formulario web, n8n, PostgreSQL y SMTP: cuatro componentes. Los dos correos usan el mismo servicio SMTP. |
 | Probar y demostrar el funcionamiento | Batería de integración, consulta de datos y comprobación manual de los buzones. |
 
-Los siguientes son acuerdos de implementación del equipo, no exigencias del PDF: n8n **2.4.8**, PostgreSQL **16**, los cuatro endpoints, los nombres `pqrs-postgres`/`pqrs_user`/`pqrs_db`, los plazos de 2/4/24/48 horas, la autenticación Basic Auth compartida, el token de seguimiento y el control de versiones. Los plazos son **horas corridas desde la radicación**, sin calendario laboral; no representan una garantía de cumplimiento legal. El selector de vistas no implementa roles SaaS ni cuentas individuales.
+Los siguientes son acuerdos de implementación del equipo, no exigencias del PDF: n8n **2.4.8**, PostgreSQL **16**, los cinco endpoints (`radicar`, `consultar`, `actualizar`, `listar`, y `calificar`), los nombres `pqrs-postgres`/`pqrs_user`/`pqrs_db`, los plazos de 2/4/24/48 horas, la autenticación Basic Auth corporativa, el token de seguimiento y el control de versiones optimista. Los plazos son **horas corridas desde la radicación**, sin calendario laboral.
+
+### Mejoras de Alto Valor y Seguridad Implementadas
+1. **Aislamiento Estricto y Control de Acceso por Roles (RBAC):** Se eliminó la exposición pública de casos ajenos. El usuario ciudadano únicamente puede radicar y consultar su caso específico mediante su código de radicado y token UUID privado. La vista del Workspace y los datos operativos de la mesa de ayuda están protegidos detrás de un modal de autenticación segura (`Acceso Funcionarios`), con filtros por agente asignado y departamento.
+2. **Encuesta de Satisfacción del Cliente (CSAT 1..5 ⭐):** Una vez resuelto o cerrado un requerimiento, el ciudadano puede calificar la atención y dejar retroalimentación a través del endpoint `/webhook/calificar-ticket`, almacenándose en PostgreSQL y alimentando el indicador de calidad promedio en el panel de supervisión.
+3. **Notificación Integral de Cierre:** El procedimiento de resolución devuelve automáticamente los datos de contacto y asunto para registrar formalmente la finalización del caso.
 
 ## 2. Recorrido del proceso
 
