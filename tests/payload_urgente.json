@@ -1,0 +1,11 @@
+{
+  "request_id": "10000000-0000-4000-8000-000000000002",
+  "nombre": "Solicitante de Prueba Urgente",
+  "email": "prueba.urgente@example.com",
+  "telefono": "",
+  "departamento": "Facturación y Cobranzas",
+  "tipo_solicitud": "Reclamo",
+  "prioridad": "Alta",
+  "asunto": "Cobro duplicado de prueba",
+  "descripcion": "Caso de prueba: se requiere revisar un cobro duplicado para verificar el enrutamiento urgente."
+}

@@ -1,0 +1,19 @@
+{
+  "name": "Actividad PQRS - n8n & PostgreSQL",
+  "image": "mcr.microsoft.com/devcontainers/universal:2",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "forwardPorts": [5678, 5432, 8080],
+  "portsAttributes": {
+    "5678": {
+      "label": "n8n Orchestrator",
+      "onAutoForward": "openBrowser"
+    },
+    "8080": {
+      "label": "Web Portal PQRS",
+      "onAutoForward": "notify"
+    }
+  },
+  "postCreateCommand": "docker compose up -d"
+}

@@ -1,0 +1,9 @@
+{
+  "operation_id": "10000000-0000-4000-8000-000000000004",
+  "ticket_id": "PQRS-2000-000000",
+  "nuevo_estado": "RESUELTO",
+  "agente_id": "a0000000-0000-0000-0000-000000000001",
+  "mensaje_resolucion": "Resolución de prueba: revisión completada.",
+  "es_nota_interna": false,
+  "version": 1
+}

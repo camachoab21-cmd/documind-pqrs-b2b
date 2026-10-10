@@ -1,0 +1,38 @@
+services:
+  pqrs-postgres:
+    image: postgres:16
+    container_name: pqrs-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: pqrs_db
+      POSTGRES_USER: pqrs_user
+      POSTGRES_PASSWORD: pqrs_password
+    volumes:
+      - pqrs_pgdata:/var/lib/postgresql/data
+      - ./database/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql:ro
+    ports:
+      - "5432:5432"
+
+  n8n:
+    image: n8nio/n8n:2.4.8
+    container_name: pqrs-n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - NODE_ENV=production
+      - WEBHOOK_URL=http://localhost:5678/
+      - GENERIC_TIMEZONE=America/Bogota
+      - TZ=America/Bogota
+      - N8N_RUNNERS_ENABLED=false
+    volumes:
+      - n8n_data:/home/node/.n8n
+    depends_on:
+      - pqrs-postgres
+
+volumes:
+  pqrs_pgdata:
+  n8n_data:

@@ -1,0 +1,11 @@
+{
+  "request_id": "10000000-0000-4000-8000-000000000001",
+  "nombre": "Solicitante de Prueba Estándar",
+  "email": "prueba.estandar@example.com",
+  "telefono": "",
+  "departamento": "Atención al Cliente General",
+  "tipo_solicitud": "Petición",
+  "prioridad": "Media",
+  "asunto": "Solicitud de información de prueba",
+  "descripcion": "Solicito información general para verificar el flujo estándar de atención."
+}
