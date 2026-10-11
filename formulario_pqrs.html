@@ -1751,6 +1751,35 @@
       cambiarRol('client');
       showToast('Sesión de funcionario finalizada.', 'info');
     }
+    function alCambiarHost() {
+      hostGeneration++; trackGeneration++;
+      cerrarSesionAgente(); isConnectedToN8n = false;
+      $('trackResultBox').style.display = 'none'; $('trkFeed').innerHTML = '';
+      $('confCard').style.display = 'none'; $('connDot').className = 'status-dot offline';
+      $('connLabel').textContent = 'Conexión pendiente de verificar';
+      try { knownBase = getBaseUrl(); localStorage.setItem('n8n_base_url', knownBase); } catch (_) { knownBase = ''; }
+      if (pendingRequest && pendingRequest.base !== knownBase) $('requestStatus').textContent = 'Existe una solicitud en otro servidor. Regrese a su URL original para verificarla; no se reenviará a esta URL.';
+      else if (pendingRequest?.status === 'saved' && pendingRequest.receipt) {
+        renderComprobante(pendingRequest.receipt);
+        $('requestStatus').textContent = 'Solicitud guardada. Para otro caso use Nueva solicitud.';
+      }
+    }
+    async function testConnection(notify = false) {
+      let base, generation = hostGeneration;
+      try {
+        base = getBaseUrl();
+        const {res,data} = await peticion(base,'/webhook/consultar-ticket?id=PQRS-2000-000000&token=00000000-0000-4000-8000-000000000000');
+        if (!mismaConexion(base,generation)) return false;
+        if (res.status !== 404 || data.status !== 'error' || data.codigo !== 404) throw Error('Respuesta inesperada del servicio de consulta.');
+        isConnectedToN8n = true; $('connDot').className = 'status-dot'; $('connLabel').textContent = 'n8n y PostgreSQL disponibles';
+        if (notify) showToast('Conexión verificada con el servicio de consulta.', 'success');
+        return true;
+      } catch (error) {
+        if (base && !mismaConexion(base,generation)) return false;
+        isConnectedToN8n = false; $('connDot').className = 'status-dot offline'; $('connLabel').textContent = 'Sin conexión verificada';
+        if (notify) showToast(error.message, 'error'); return false;
+      }
+    }
     function establecerPerfilAgente(agente) {
       currentAgentProfile = agente;
       if ($('agentLoggedName')) $('agentLoggedName').textContent = agente.nombre || 'Funcionario';

@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Panel de Sustentación y Guía de Pruebas - Automatización PQRS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-base: #06080e;
+      --bg-subtle: #0b0f17;
+      --bg-surface: rgba(13, 17, 26, 0.85);
+      --bg-surface-elevated: #141a27;
+      --border-default: rgba(255, 255, 255, 0.1);
+      --border-strong: rgba(255, 255, 255, 0.18);
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --text-tertiary: #64748b;
+      --accent-primary: #3b82f6;
+      --accent-gradient: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+      --success-base: #10b981;
+      --warning-base: #f59e0b;
+      --danger-base: #f43f5e;
+      --font-sans: 'Plus Jakarta Sans', sans-serif;
+      --font-display: 'Outfit', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+      --radius-md: 10px;
+      --radius-lg: 16px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg-base);
+      background-image: 
+        radial-gradient(ellipse 70% 40% at 50% -10%, rgba(59, 130, 246, 0.15) 0%, transparent 80%),
+        radial-gradient(ellipse 50% 30% at 90% 90%, rgba(16, 185, 129, 0.08) 0%, transparent 60%);
+      background-attachment: fixed;
+      font-family: var(--font-sans);
+      color: var(--text-primary);
+      padding: 30px 24px 80px;
+      line-height: 1.55;
+    }
+
+    .container { max-width: 1180px; margin: 0 auto; }
+    
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid var(--border-default);
+      margin-bottom: 30px;
+    }
+
+    .brand-title {
+      font-family: var(--font-display);
+      font-size: 1.4rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .badge-pro {
+      font-size: 0.7rem;
+      background: rgba(59, 130, 246, 0.2);
+      color: #93c5fd;
+      border: 1px solid rgba(59, 130, 246, 0.4);
+      padding: 3px 9px;
+      border-radius: 999px;
+      font-family: var(--font-mono);
+      font-weight: 700;
+    }
+
+    .nav-tabs {
+      display: flex;
+      gap: 8px;
+      background: var(--bg-surface-elevated);
+      padding: 4px;
+      border-radius: 999px;
+      border: 1px solid var(--border-default);
+      margin-bottom: 28px;
+      flex-wrap: wrap;
+    }
+
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-secondary);
+      font-family: var(--font-sans);
+      font-size: 0.84rem;
+      font-weight: 600;
+      padding: 8px 18px;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .tab-btn.active {
+      background: var(--accent-primary);
+      color: #ffffff;
+      box-shadow: 0 2px 10px rgba(59, 130, 246, 0.4);
+    }
+
+    .section-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-lg);
+      padding: 32px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      margin-bottom: 24px;
+      display: none;
+      animation: fadeIn 0.25s ease-out;
+    }
+
+    .section-card.active { display: block; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    h2 {
+      font-family: var(--font-display);
+      font-size: 1.35rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: var(--text-primary);
+    }
+
+    p.lead {
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      margin-bottom: 24px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 20px;
+    }
+
+    .card-item {
+      background: var(--bg-surface-elevated);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      padding: 20px;
+    }
+
+    .card-item h3 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #93c5fd;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-action {
+      background: var(--accent-gradient);
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.88rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      text-decoration: none;
+      box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4);
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+
+    .btn-action:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(37, 99, 235, 0.55);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-primary);
+      border: 1px solid var(--border-default);
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.88rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      text-decoration: none;
+      transition: all 0.15s;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: var(--border-strong);
+    }
+
+    .code-box {
+      background: #090d15;
+      border: 1px solid var(--border-default);
+      padding: 14px;
+      border-radius: 8px;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: #93c5fd;
+      overflow-x: auto;
+      margin: 10px 0;
+    }
+
+    .qa-box {
+      border-left: 3px solid var(--accent-primary);
+      background: rgba(59, 130, 246, 0.05);
+      padding: 16px 20px;
+      border-radius: 0 10px 10px 0;
+      margin-bottom: 16px;
+    }
+
+    .qa-question {
+      font-weight: 700;
+      font-size: 0.95rem;
+      color: #93c5fd;
+      margin-bottom: 6px;
+    }
+
+    .qa-answer {
+      font-size: 0.86rem;
+      color: #cbd5e1;
+      line-height: 1.6;
+    }
+
+    .status-beacon {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--warning-base);
+      display: inline-block;
+      box-shadow: 0 0 10px var(--warning-base);
+    }
+
+    .status-beacon.online {
+      background: var(--success-base);
+      box-shadow: 0 0 12px var(--success-base);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 0.85rem;
+    }
+
+    th, td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border-default);
+      text-align: left;
+    }
+
+    th { color: var(--text-tertiary); text-transform: uppercase; font-size: 0.72rem; }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    
+    <header>
+      <div>
+        <div class="brand-title">
+          <span>Control Maestro de Sustentación & Laboratorio</span>
+          <span class="badge-pro">DOCS & DEMO v2.0</span>
+        </div>
+        <p style="font-size:0.8rem; color:var(--text-secondary); margin-top:2px;">
+          Actividad 2: Automatización de Proceso Empresarial B2B • TSDI 6to Semestre
+        </p>
+      </div>
+
+      <div style="display:flex; align-items:center; gap:12px;">
+        <div style="display:flex; align-items:center; gap:8px; background:var(--bg-surface-elevated); padding:8px 14px; border-radius:999px; border:1px solid var(--border-default); font-size:0.78rem;">
+          <span class="status-beacon" id="beaconIndicator"></span>
+          <span id="beaconText">Verificando servidor...</span>
+        </div>
+        <a href="../formulario_pqrs.html" target="_blank" class="btn-action">
+          <span>Abrir Portal PQRS ➔</span>
+        </a>
+      </div>
+    </header>
+
+    <!-- NAVEGACIÓN DE PESTAÑAS -->
+    <div class="nav-tabs">
+      <button class="tab-btn active" onclick="switchTab('pruebas')">🧪 Laboratorio de Pruebas</button>
+      <button class="tab-btn" onclick="switchTab('sustentacion')">🎙️ Guion de Sustentación</button>
+      <button class="tab-btn" onclick="switchTab('preguntas')">💡 Banco de Preguntas del Profesor</button>
+      <button class="tab-btn" onclick="switchTab('rubrica')">📋 Matriz de Cumplimiento (PDF)</button>
+    </div>
+
+    <!-- PESTAÑA 1: LABORATORIO DE PRUEBAS -->
+    <div id="tabPruebas" class="section-card active">
+      <h2>Laboratorio de Experimentación y Pruebas</h2>
+      <p class="lead">Siga estos 4 casos de prueba estructurados para experimentar el ciclo de vida completo de una solicitud.</p>
+
+      <div class="grid-2">
+        <div class="card-item">
+          <h3>⚡ Caso 1: Radicación de Reclamo Urgente</h3>
+          <p style="font-size:0.84rem; color:var(--text-secondary); margin-bottom:12px;">
+            Demuestra la toma de decisiones y bifurcación a la <strong>Ruta Urgente (SLA 4 Horas)</strong>.
+          </p>
+          <ol style="font-size:0.82rem; color:var(--text-secondary); padding-left:18px; margin-bottom:14px; line-height:1.6;">
+            <li>En el formulario, pulse el botón <strong>"⚡ Facturación Urgente"</strong>.</li>
+            <li>Observe cómo el badge cambia dinámicamente a <em>"SLA: 4 horas corridas"</em>.</li>
+            <li>Pulse <strong>"Radicar Requerimiento"</strong>.</li>
+            <li>Copie el radicado generado (ej: <code>PQRS-2026-891503</code>) y la clave de consulta.</li>
+          </ol>
+          <a href="../formulario_pqrs.html" target="_blank" class="btn-secondary" style="font-size:0.8rem;">Ejecutar en el Portal</a>
+        </div>
+
+        <div class="card-item">
+          <h3>🔍 Caso 2: Trazabilidad y Consulta Ciudadana</h3>
+          <p style="font-size:0.84rem; color:var(--text-secondary); margin-bottom:12px;">
+            Verifica la seguridad y la línea de tiempo pública del requerimiento.
+          </p>
+          <ol style="font-size:0.82rem; color:var(--text-secondary); padding-left:18px; margin-bottom:14px; line-height:1.6;">
+            <li>Vaya a la pestaña <strong>"Rastrear Caso por Radicado"</strong>.</li>
+            <li>Pegue el radicado y la clave privada de consulta.</li>
+            <li>Compruebe la línea de tiempo interactiva: etapa <em>"Radicado"</em> activa.</li>
+            <li>Confirme que el cliente solo tiene acceso a su caso y no al de otros usuarios.</li>
+          </ol>
+          <a href="../formulario_pqrs.html" target="_blank" class="btn-secondary" style="font-size:0.8rem;">Ver Seguimiento</a>
+        </div>
+
+        <div class="card-item">
+          <h3>👑 Caso 3: Gestión de Agentes con RBAC</h3>
+          <p style="font-size:0.84rem; color:var(--text-secondary); margin-bottom:12px;">
+            Demuestra la protección de roles corporativos y resolución de casos.
+          </p>
+          <ol style="font-size:0.82rem; color:var(--text-secondary); padding-left:18px; margin-bottom:14px; line-height:1.6;">
+            <li>Pulse el botón <strong>"Acceso Funcionarios"</strong> en la cabecera.</li>
+            <li>Seleccione el perfil rápido <strong>"👑 Andrea Silva (Supervisor)"</strong>.</li>
+            <li>Acceda al Workspace y pulse <strong>"Gestionar"</strong> en el ticket.</li>
+            <li>Cambie el estado a <strong>RESUELTO</strong>, redacte la solución y guarde.</li>
+          </ol>
+          <a href="../formulario_pqrs.html" target="_blank" class="btn-secondary" style="font-size:0.8rem;">Probar Login y Gestión</a>
+        </div>
+
+        <div class="card-item">
+          <h3>⭐ Caso 4: Encuesta de Calidad (CSAT)</h3>
+          <p style="font-size:0.84rem; color:var(--text-secondary); margin-bottom:12px;">
+            Demuestra la retroalimentación del cliente y cálculo de métricas de calidad.
+          </p>
+          <ol style="font-size:0.82rem; color:var(--text-secondary); padding-left:18px; margin-bottom:14px; line-height:1.6;">
+            <li>Vuelva a la pestaña del portal de cliente y consulte el ticket resuelto.</li>
+            <li>Verifique que la línea de tiempo ahora marca <strong>"Resuelto"</strong> en verde.</li>
+            <li>Aparecerá el módulo de <strong>Encuesta CSAT</strong>: seleccione 5 estrellas ⭐.</li>
+            <li>Envíe la calificación y observe la actualización en los indicadores del agente.</li>
+          </ol>
+          <a href="../formulario_pqrs.html" target="_blank" class="btn-secondary" style="font-size:0.8rem;">Probar Encuesta CSAT</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- PESTAÑA 2: GUION DE SUSTENTACIÓN -->
+    <div id="tabSustentacion" class="section-card">
+      <h2>Guion Estructurado de Sustentación (3 a 5 Minutos)</h2>
+      <p class="lead">Estructura cronológica para presentar con seguridad ante el profesor y tus compañeros.</p>
+
+      <div class="qa-box">
+        <div class="qa-question">1. Introducción y Propósito del Sistema (40 seg)</div>
+        <div class="qa-answer">
+          "Buenas tardes, profesor. El objetivo de nuestro proyecto fue automatizar el proceso empresarial de recepción, enrutamiento, gestión y auditoría de Requerimientos Institucionales (PQRS) para un entorno B2B. Conectamos cuatro capas desacopladas: Portal Web reactivo, Orquestador n8n, Base de datos relacional PostgreSQL y Servidor SMTP de notificaciones."
+        </div>
+      </div>
+
+      <div class="qa-box">
+        <div class="qa-question">2. Demostración de las 5 Fases de Automatización (90 seg)</div>
+        <div class="qa-answer">
+          "Cumplimos al 100% las 5 fases exigidas en la rúbrica:
+          <br><strong>• Entrada:</strong> Capturamos la solicitud con un identificador idempotente (UUID) para evitar duplicados.
+          <br><strong>• Procesamiento:</strong> n8n normaliza los textos y calcula matemáticamente la fecha y hora límite de atención (SLA) según hora legal de Colombia.
+          <br><strong>• Toma de Decisión:</strong> Un nodo condicional bifurca entre la Ruta Urgente (< 4 horas) para quejas y reclamos de alta prioridad, y la Ruta Estándar (24 a 48 horas) para peticiones ordinarias.
+          <br><strong>• Acción Automática:</strong> Se dispara un correo SMTP con el comprobante al solicitante y alertas al supervisor.
+          <br><strong>• Almacenamiento:</strong> Persistimos todo en tablas normalizadas de PostgreSQL con trazabilidad de auditoría inmutable."
+        </div>
+      </div>
+
+      <div class="qa-box">
+        <div class="qa-question">3. Valores Agregados de Ingeniería de Software (50 seg)</div>
+        <div class="qa-answer">
+          "Para llevar el proyecto a un nivel de producción, incorporamos dos elementos clave:
+          <br>1. <strong>Seguridad RBAC y Privacidad:</strong> El ciudadano solo accede a su caso con su clave criptográfica; el listado completo y la gestión requieren credenciales corporativas autenticadas.
+          <br>2. <strong>Control de Concurrencia y Calidad CSAT:</strong> Manejamos bloqueo optimista por versión de caso y una encuesta de satisfacción de 1 a 5 estrellas al resolver el ticket."
+        </div>
+      </div>
+    </div>
+
+    <!-- PESTAÑA 3: BANCO DE PREGUNTAS DEL PROFESOR -->
+    <div id="tabPreguntas" class="section-card">
+      <h2>Banco de Preguntas y Respuestas Técnicas</h2>
+      <p class="lead">Respuestas sólidas y fundamentadas a las preguntas más frecuentes de los evaluadores.</p>
+
+      <div class="qa-box">
+        <div class="qa-question">¿Por qué utilizan un identificador UUID (request_id) en el formulario antes de enviar a n8n?</div>
+        <div class="qa-answer">
+          <strong>Respuesta técnica:</strong> Para garantizar el principio de <em>idempotencia</em> en sistemas distribuidos. Si el usuario experimenta intermitencia de red o presiona dos veces el botón, n8n y la base de datos verifican si ese <code>request_id</code> ya fue procesado y devuelven el mismo comprobante, evitando generar radicados duplicados.
+        </div>
+      </div>
+
+      <div class="qa-box">
+        <div class="qa-question">¿Cómo aseguran que dos agentes no sobreescriban los datos del mismo caso al mismo tiempo?</div>
+        <div class="qa-answer">
+          <strong>Respuesta técnica:</strong> Implementamos <em>Concurrencia Optimista</em>. Cada registro en <code>pqrs_solicitudes</code> tiene una columna entera <code>version</code>. Cuando el agente abre el modal, lee la versión actual. Al guardar, el backend valida <code>WHERE ticket_id = $1 AND version = $2</code>. Si otro agente ya modificó el caso, la versión en base de datos habrá aumentado y el sistema rechazará la operación con HTTP 409 (Conflict).
+        </div>
+      </div>
+
+      <div class="qa-box">
+        <div class="qa-question">¿Cómo calculan el SLA y por qué en horas corridas?</div>
+        <div class="qa-answer">
+          <strong>Respuesta técnica:</strong> El motor de n8n toma la marca de tiempo de radicación (<code>fecha_radicacion</code>) y, con base en la matriz de prioridad y tipología, suma algebraicamente el número de horas configuradas en la política empresarial, calculando <code>sla_fecha_limite</code> de forma explícita en la zona horaria <code>America/Bogota</code> (UTC-5) para garantizar validez jurídica e institucional.
+        </div>
+      </div>
+
+      <div class="qa-box">
+        <div class="qa-question">¿Cómo protegen la privacidad de los datos personales de los clientes?</div>
+        <div class="qa-answer">
+          <strong>Respuesta técnica:</strong> Aplicamos el principio de mínimo privilegio mediante Roles (RBAC). El endpoint público de consulta exige tanto el número de radicado como un <code>tracking_token</code> de 128 bits entregado únicamente al solicitante. De esta forma, ningún tercero puede enumerar o escanear solicitudes ajenas.
+        </div>
+      </div>
+    </div>
+
+    <!-- PESTAÑA 4: MATRIZ DE CUMPLIMIENTO -->
+    <div id="tabRubrica" class="section-card">
+      <h2>Matriz de Cumplimiento de la Rúbrica Oficial</h2>
+      <p class="lead">Contraste directo con los criterios del PDF <em>Actividad_Automatizacion_Proceso_Empresarial.pdf</em>.</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Fase de la Rúbrica</th>
+            <th>Requisito Docente</th>
+            <th>Implementación en la Solución</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>1. Entrada</strong></td>
+            <td>Formulario Web / Webhook</td>
+            <td>Formulario HTML5 reactivo + Webhook POST en n8n</td>
+            <td><span style="color:var(--success-base); font-weight:700;">100% CUMPLIDO</span></td>
+          </tr>
+          <tr>
+            <td><strong>2. Procesamiento</strong></td>
+            <td>Limpieza, cálculos, SLA</td>
+            <td>Normalización de cadenas, generador inalterable y cálculo de fecha límite SLA</td>
+            <td><span style="color:var(--success-base); font-weight:700;">100% CUMPLIDO</span></td>
+          </tr>
+          <tr>
+            <td><strong>3. Toma de Decisión</strong></td>
+            <td>Condicionales y clasificación</td>
+            <td>Bifurcación en n8n: Ruta Urgente (< 4h) vs Ruta Estándar (24 a 48h)</td>
+            <td><span style="color:var(--success-base); font-weight:700;">100% CUMPLIDO</span></td>
+          </tr>
+          <tr>
+            <td><strong>4. Acción Automática</strong></td>
+            <td>Notificación, alertas, estados</td>
+            <td>Correo SMTP transaccional, actualización de estados y encuesta CSAT</td>
+            <td><span style="color:var(--success-base); font-weight:700;">100% CUMPLIDO</span></td>
+          </tr>
+          <tr>
+            <td><strong>5. Almacenamiento</strong></td>
+            <td>Base de datos relacional</td>
+            <td>PostgreSQL con esquemas `pqrs_solicitudes`, `pqrs_historial_actividad`</td>
+            <td><span style="color:var(--success-base); font-weight:700;">100% CUMPLIDO</span></td>
+          </tr>
+          <tr>
+            <td><strong>Servicios Conectados</strong></td>
+            <td>Mínimo 3 servicios</td>
+            <td>4 servicios: Web Frontend + n8n + PostgreSQL + Servidor SMTP</td>
+            <td><span style="color:var(--success-base); font-weight:700;">SUPERA RÚBRICA</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+
+  <script>
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.section-card').forEach(c => c.classList.remove('active'));
+      
+      const tabMap = {
+        'pruebas': 'tabPruebas',
+        'sustentacion': 'tabSustentacion',
+        'preguntas': 'tabPreguntas',
+        'rubrica': 'tabRubrica'
+      };
+
+      const target = document.getElementById(tabMap[tabId]);
+      if (target) {
+        target.classList.add('active');
+        event.target.classList.add('active');
+      }
+    }
+
+    // Ping continuo al backend (puerto 5678)
+    async function checkServer() {
+      const beacon = document.getElementById('beaconIndicator');
+      const text = document.getElementById('beaconText');
+      try {
+        const res = await fetch('http://localhost:5678/webhook/consultar-ticket?id=PQRS-2000-000000&token=00000000-0000-4000-8000-000000000000', {
+          method: 'GET',
+          cache: 'no-store'
+        });
+        if (res.status === 404 || res.ok) {
+          beacon.className = 'status-beacon online';
+          text.textContent = 'Servidor local activo (:5678)';
+        } else {
+          beacon.className = 'status-beacon';
+          text.textContent = 'Servidor sin responder';
+        }
+      } catch (_) {
+        beacon.className = 'status-beacon';
+        text.textContent = 'Servidor inactivo (Inicie simulador o Docker)';
+      }
+    }
+
+    checkServer();
+    setInterval(checkServer, 4000);
+  </script>
+</body>
+</html>
