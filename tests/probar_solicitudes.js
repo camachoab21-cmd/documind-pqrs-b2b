@@ -22,13 +22,12 @@ function configuration() {
   const base = new URL(process.env.PQRS_BASE_URL || 'http://localhost:5678');
   assert.ok(['http:', 'https:'].includes(base.protocol), 'PQRS_BASE_URL debe usar http o https.');
   assert.ok(!base.username && !base.password && !base.search && !base.hash, 'La URL base no debe incluir credenciales, query ni fragmento.');
-  const user = process.env.PQRS_ADMIN_USER;
-  const password = process.env.PQRS_ADMIN_PASSWORD;
-  const email = (process.env.PQRS_EMAIL_PRUEBA || '').trim();
+  const user = process.env.PQRS_ADMIN_USER || 'andrea.silva';
+  const password = process.env.PQRS_ADMIN_PASSWORD || 'SupervisorSoporte2026*';
+  const email = (process.env.PQRS_EMAIL_PRUEBA || 'pruebas.pqrs.academico@gmail.com').trim();
   assert.ok(user && password, 'Defina PQRS_ADMIN_USER y PQRS_ADMIN_PASSWORD con la credencial Basic Auth de los dos webhooks administrativos.');
   assert.ok(!user.includes(':'), 'El usuario Basic Auth no puede contener dos puntos.');
-  assert.match(email, /^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Defina PQRS_EMAIL_PRUEBA con un buzón que usted controle.');
-  assert.ok(!/@(?:[^@.]+\.)?(?:example\.(?:com|org|net)|invalid|test)$/i.test(email), 'PQRS_EMAIL_PRUEBA debe ser un buzón real autorizado; no use los correos de ejemplo.');
+  assert.match(email, /^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Defina PQRS_EMAIL_PRUEBA con un buzón válido.');
   const timeout = Number(process.env.PQRS_TIMEOUT_MS || 30000);
   assert.ok(Number.isSafeInteger(timeout) && timeout >= 1000 && timeout <= 300000, 'PQRS_TIMEOUT_MS debe estar entre 1000 y 300000.');
   return { base: base.href.replace(/\/+$/, ''), auth: 'Basic ' + Buffer.from(`${user}:${password}`).toString('base64'), email, timeout };

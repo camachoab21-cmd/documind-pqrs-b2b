@@ -1,14 +1,16 @@
 /**
- * SERVIDOR SIMULADOR LOCAL PARA PRUEBAS INMEDIATAS (MOCK n8n + PostgreSQL + SMTP)
- * Permite probar el 100% del portal web, radicaciones, tracking, RBAC, SLAs y CSAT
- * sin depender de Docker Desktop ni tiempos de arranque pesados.
+ * SERVIDOR SIMULADOR LOCAL PARA PRUEBAS (MOCK n8n + PostgreSQL + SMTP)
+ * Implementa 100% el contrato de los webhooks de n8n, soporte de RBAC,
+ * idempotencia por request_id / operation_id, control de concurrencia optimista y CSAT.
  */
 const http = require('http');
-const url = require('url');
+const { randomUUID } = require('crypto');
 
 const PORT = 5678;
 
-// Semilla de agentes con credenciales corporativas
+const estadosValidos = ['NUEVO', 'ASIGNADO', 'EN_GESTION', 'ESPERANDO_CLIENTE', 'RESUELTO', 'CERRADO'];
+
+// Directorio de agentes corporativos
 const agentes = [
   { id: '11111111-1111-4000-8000-000000000001', nombre: 'Andrea Silva', email: 'andrea.silva@empresa.com', rol: 'SUPERVISOR', departamento: 'Soporte Técnico y Sistemas', pass: 'SupervisorSoporte2026*' },
   { id: '22222222-2222-4000-8000-000000000002', nombre: 'Carlos Morales', email: 'carlos.morales@empresa.com', rol: 'AGENTE', departamento: 'Soporte Técnico y Sistemas', pass: 'AgenteSistemas2026*' },
@@ -16,14 +18,18 @@ const agentes = [
   { id: '44444444-4444-4000-8000-000000000004', nombre: 'Felipe Torres', email: 'felipe.torres@empresa.com', rol: 'AGENTE', departamento: 'Control de Calidad y Garantías', pass: 'AgenteCalidad2026*' }
 ];
 
-// Base de datos en memoria para pruebas
 let contadorRadicado = 891500;
+const requestsGuardados = new Map();
+const operationsGuardadas = new Map();
+
+// Base de datos de tickets en memoria
 const tickets = [
   {
     ticket_id: 'PQRS-2026-891501',
+    request_id: '99999999-9999-4000-8000-000000000001',
     tracking_token: 'a0000000-0000-4000-8000-000000000001',
     cliente_nombre: 'Mariana Restrepo Cadavid',
-    email: 'm.restrepo@example.com',
+    email: 'm.restrepo@empresa.com',
     telefono: '314 567 8901',
     departamento: 'Atención al Cliente General',
     tipo: 'Petición',
@@ -42,15 +48,16 @@ const tickets = [
     satisfaccion_score: 5,
     satisfaccion_comentario: 'Excelente tiempo de respuesta y atención impecable.',
     actividades: [
-      { autor: 'Sistema n8n', tipo: 'SISTEMA', mensaje: 'Radicación formal recibida vía webhook y almacenada en PostgreSQL.', fecha: new Date(Date.now() - 48 * 3600000).toISOString(), es_nota_interna: false },
+      { autor: 'Sistema n8n', tipo: 'SISTEMA', mensaje: 'Radicación formal recibida vía webhook y persistida en PostgreSQL.', fecha: new Date(Date.now() - 48 * 3600000).toISOString(), es_nota_interna: false },
       { autor: 'Andrea Silva', tipo: 'SUPERVISOR', mensaje: 'Certificado generado y remitido al correo del cliente.', fecha: new Date(Date.now() - 12 * 3600000).toISOString(), es_nota_interna: false }
     ]
   },
   {
     ticket_id: 'PQRS-2026-891502',
+    request_id: '99999999-9999-4000-8000-000000000002',
     tracking_token: 'b0000000-0000-4000-8000-000000000002',
     cliente_nombre: 'Carlos Alberto Gómez',
-    email: 'carlos.gomez@example.com',
+    email: 'carlos.gomez@empresa.com',
     telefono: '300 123 4567',
     departamento: 'Facturación y Cobranzas',
     tipo: 'Reclamo',
@@ -86,11 +93,8 @@ function parseJsonBody(req) {
     let body = '';
     req.on('data', chunk => body += chunk);
     req.on('end', () => {
-      try {
-        resolve(body ? JSON.parse(body) : {});
-      } catch (err) {
-        reject(err);
-      }
+      try { resolve(body ? JSON.parse(body) : {}); }
+      catch (err) { reject(err); }
     });
   });
 }
@@ -108,79 +112,106 @@ const server = http.createServer(async (req, res) => {
   const pathname = parsedUrl.pathname.replace(/\/+$/, '');
   const searchParams = parsedUrl.searchParams;
 
-  console.log(`[${new Date().toLocaleTimeString()}] ${req.method} ${pathname}`);
-
   try {
-    // 1. CONSULTA PING & CONSULTA DE CASO INDIVIDUAL
+    // 1. CONSULTA PING & CONSULTA DE SEGUIMIENTO (TRACKING)
     if (pathname === '/webhook/consultar-ticket' && req.method === 'GET') {
       const id = searchParams.get('id');
       const token = searchParams.get('token');
 
-      // Ping de verificación de conexión del frontend
-      if (id === 'PQRS-2000-000000' && token === '00000000-0000-4000-8000-000000000000') {
+      const ticket = tickets.find(t => t.ticket_id === id && t.tracking_token === token);
+      if (!ticket) {
         res.writeHead(404, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ status: 'error', codigo: 404, mensaje: 'Radicado o clave de consulta incorrectos' }));
         return;
       }
 
-      const ticket = tickets.find(t => t.ticket_id === id && t.tracking_token === token);
-      if (!ticket) {
-        res.writeHead(404, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 'error', codigo: 404, mensaje: 'No se encontró el requerimiento con ese radicado o clave privada.' }));
-        return;
-      }
-
+      // No revelar tracking_token ni email en la vista pública
+      const { tracking_token, email, actividades, ...publicData } = ticket;
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
         status: 'success',
         ticket: {
-          ...ticket,
-          timeline: ticket.actividades
+          ...publicData,
+          timeline: actividades.filter(a => !a.es_nota_interna)
         }
       }));
       return;
     }
 
-    // 2. RADICACIÓN DE NUEVO REQUERIMIENTO
+    // 2. RADICACIÓN DE PQRS (POST)
     if (pathname === '/webhook/radicar-pqrs' && req.method === 'POST') {
       const body = await parseJsonBody(req);
       const { request_id, nombre, email, telefono, departamento, tipo_solicitud, prioridad, asunto, descripcion } = body;
 
-      if (!nombre || !email || !asunto || !descripcion) {
+      // Validación de payload
+      const errores = [];
+      if (!nombre || nombre.length < 2 || nombre.length > 150) errores.push('Nombre inválido.');
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errores.push('Correo electrónico inválido.');
+      if (!asunto || asunto.length < 3 || asunto.length > 250) errores.push('Asunto inválido.');
+      if (!descripcion || descripcion.length < 5 || descripcion.length > 5000) errores.push('Descripción inválida.');
+
+      if (errores.length > 0) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 'error', guardada: false, mensaje: 'Campos obligatorios incompletos.' }));
+        res.end(JSON.stringify({ status: 'error', codigo: 400, guardada: false, errores }));
         return;
       }
 
-      // Cálculo de SLA y ruta de decisión
+      // Idempotencia por request_id
+      if (requestsGuardados.has(request_id)) {
+        const existente = requestsGuardados.get(request_id);
+        const normalizadoGuardado = { ...existente.payload, request_id: undefined };
+        const normalizadoEntrante = { ...body, request_id: undefined };
+
+        if (JSON.stringify(normalizadoGuardado) !== JSON.stringify(normalizadoEntrante)) {
+          res.writeHead(409, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ status: 'error', codigo: 409, guardada: null, mensaje: 'Mismo request_id con datos diferentes.' }));
+          return;
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          status: 'success',
+          codigo: 200,
+          guardada: true,
+          duplicada: true,
+          ...existente.respuesta
+        }));
+        return;
+      }
+
+      // Cálculo de SLA
       const prioUpper = (prioridad || '').toUpperCase();
       const tipoUpper = (tipo_solicitud || '').toUpperCase();
       const esUrgente = prioUpper === 'CRITICA' || prioUpper === 'ALTA' || tipoUpper === 'RECLAMO';
       const slaHoras = prioUpper === 'CRITICA' ? 2 : (prioUpper === 'ALTA' || tipoUpper === 'RECLAMO') ? 4 : prioUpper === 'BAJA' ? 48 : 24;
-      
+
       const nuevoNumero = ++contadorRadicado;
       const ticketId = `PQRS-2026-${nuevoNumero}`;
-      const trackingToken = cryptoRandomUuid();
-      const fechaRadicacion = new Date().toISOString();
-      const slaFechaLimite = new Date(Date.now() + slaHoras * 3600000).toISOString();
+      const trackingToken = randomUUID();
+      const now = new Date();
+      const fechaRadicacion = now.toISOString();
+      const slaFechaLimite = new Date(now.getTime() + slaHoras * 3600000).toISOString();
 
       const nuevoTicket = {
         ticket_id: ticketId,
+        request_id,
         tracking_token: trackingToken,
         cliente_nombre: nombre,
-        email: email,
+        email: email.toLowerCase(),
         telefono: telefono || '',
         departamento: departamento || 'Atención al Cliente General',
         tipo: tipo_solicitud,
         prioridad: prioridad,
-        asunto: asunto,
-        descripcion: descripcion,
+        asunto,
+        descripcion,
         estado: 'NUEVO',
         es_urgente: esUrgente,
         sla_horas: slaHoras,
         sla_fecha_limite: slaFechaLimite,
         fecha_radicacion: fechaRadicacion,
         fecha_resolucion: null,
+        confirmacion_estado: 'ENVIADA',
+        alerta_estado: esUrgente ? 'ENVIADA' : 'NO_APLICA',
         version: 1,
         agente_asignado_id: null,
         agente_asignado: null,
@@ -199,34 +230,40 @@ const server = http.createServer(async (req, res) => {
 
       tickets.unshift(nuevoTicket);
 
-      console.log(`[RADICACIÓN CONFIRMADA] ${ticketId} | SLA: ${slaHoras}h | Urgente: ${esUrgente}`);
-
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({
-        status: 'success',
-        guardada: true,
-        request_id: request_id,
+      const respuestaTicket = {
+        request_id,
         ticket_id: ticketId,
         tracking_token: trackingToken,
         tipo: tipo_solicitud,
-        prioridad: prioridad,
+        prioridad,
         estado: 'NUEVO',
         es_urgente: esUrgente,
         sla_horas: slaHoras,
         sla_fecha_limite: slaFechaLimite,
-        confirmacion_estado: 'ENVIADO',
-        alerta_estado: esUrgente ? 'ENVIADO_SUPERVISOR' : 'NO_APLICA',
+        confirmacion_estado: 'ENVIADA',
+        alerta_estado: esUrgente ? 'ENVIADA' : 'NO_APLICA',
         mensaje: `Su solicitud ha sido radicada formalmente bajo el radicado ${ticketId}. Plazo máximo de atención: ${slaHoras} horas.`
+      };
+
+      requestsGuardados.set(request_id, { payload: body, respuesta: respuestaTicket });
+
+      res.writeHead(201, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        status: 'success',
+        codigo: 201,
+        guardada: true,
+        duplicada: false,
+        ...respuestaTicket
       }));
       return;
     }
 
-    // 3. CONSULTA WORKSPACE AGENTES (RBAC PROTEGIDO)
+    // 3. CONSULTA WORKSPACE (GET con Basic Auth)
     if (pathname === '/webhook/consultar-pqrs' && req.method === 'GET') {
       const authHeader = req.headers['authorization'] || '';
       if (!authHeader.startsWith('Basic ')) {
         res.writeHead(401, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 'error', mensaje: 'Requiere autenticación corporativa (RBAC).' }));
+        res.end(JSON.stringify({ status: 'error', codigo: 401, mensaje: 'Requiere autenticación corporativa (RBAC).' }));
         return;
       }
 
@@ -236,27 +273,38 @@ const server = http.createServer(async (req, res) => {
       const agente = agentes.find(a => (a.email.toLowerCase().startsWith(user.toLowerCase()) || a.nombre.toLowerCase().replace(/\s+/g, '.').includes(user.toLowerCase())) && a.pass === pass);
       if (!agente) {
         res.writeHead(403, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 'error', mensaje: 'Credenciales inválidas de funcionario.' }));
+        res.end(JSON.stringify({ status: 'error', codigo: 403, mensaje: 'Credenciales inválidas de funcionario.' }));
         return;
       }
 
       const total = tickets.length;
       const urgentes = tickets.filter(t => t.es_urgente).length;
+      const estandar = total - urgentes;
       const activos = tickets.filter(t => !['RESUELTO', 'CERRADO'].includes(t.estado)).length;
       const resueltos = tickets.filter(t => ['RESUELTO', 'CERRADO'].includes(t.estado)).length;
+      const en_gestion = tickets.filter(t => t.estado === 'EN_GESTION').length;
       const cumplimientoPct = total > 0 ? Math.round((resueltos / total) * 100) : 100;
       const scores = tickets.map(t => t.satisfaccion_score).filter(Boolean);
       const avgCsat = scores.length ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : '5.0';
 
+      const limiteListado = 100;
+      const ticketsDevueltos = tickets.slice(0, limiteListado);
+
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
         status: 'success',
-        total: total,
-        urgentes: urgentes,
-        activos: activos,
+        codigo: 200,
+        total,
+        urgentes,
+        estandar,
+        activos,
+        resueltos,
+        en_gestion,
+        total_listado: ticketsDevueltos.length,
+        limite_listado: limiteListado,
         cumplimiento_pct: cumplimientoPct,
         satisfaccion_promedio: avgCsat,
-        tickets: tickets.map(t => ({
+        tickets: ticketsDevueltos.map(t => ({
           ...t,
           actividades: t.actividades
         })),
@@ -265,29 +313,50 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // 4. ACTUALIZACIÓN Y GESTIÓN DE TICKET (AGENTE)
+    // 4. ACTUALIZACIÓN DE TICKET (POST con Basic Auth)
     if (pathname === '/webhook/actualizar-ticket' && req.method === 'POST') {
       const authHeader = req.headers['authorization'] || '';
       if (!authHeader.startsWith('Basic ')) {
         res.writeHead(401, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 'error', mensaje: 'No autorizado.' }));
+        res.end(JSON.stringify({ status: 'error', codigo: 401, mensaje: 'No autorizado.' }));
         return;
       }
 
       const body = await parseJsonBody(req);
-      const { ticket_id, nuevo_estado, agente_id, mensaje_resolucion, es_nota_interna, version } = body;
+      const { operation_id, ticket_id, nuevo_estado, agente_id, mensaje_resolucion, es_nota_interna, version } = body;
+
+      // Idempotencia por operation_id
+      if (operationsGuardadas.has(operation_id)) {
+        const op = operationsGuardadas.get(operation_id);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          status: 'success',
+          codigo: 200,
+          duplicada: true,
+          ticket_id,
+          estado: nuevo_estado,
+          version: op.version,
+          mensaje: `Operación ya aplicada previamente.`
+        }));
+        return;
+      }
+
+      if (!estadosValidos.includes(nuevo_estado)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'error', codigo: 400, mensaje: 'Estado inexistente o no permitido.' }));
+        return;
+      }
 
       const ticket = tickets.find(t => t.ticket_id === ticket_id);
       if (!ticket) {
         res.writeHead(404, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 'error', mensaje: 'Ticket no encontrado.' }));
+        res.end(JSON.stringify({ status: 'error', codigo: 404, mensaje: 'Ticket no encontrado.' }));
         return;
       }
 
-      // Verificación de concurrencia optimista
       if (ticket.version !== version) {
         res.writeHead(409, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 'error', mensaje: 'Conflicto de versión: el ticket fue modificado por otro funcionario.' }));
+        res.end(JSON.stringify({ status: 'error', codigo: 409, mensaje: 'Conflicto de versión (concurrencia optimista).' }));
         return;
       }
 
@@ -297,8 +366,10 @@ const server = http.createServer(async (req, res) => {
       ticket.agente_asignado = agente ? agente.nombre : 'Funcionario';
       ticket.version++;
 
-      if (['RESUELTO', 'CERRADO'].includes(nuevo_estado) && !ticket.fecha_resolucion) {
-        ticket.fecha_resolucion = new Date().toISOString();
+      if (['RESUELTO', 'CERRADO'].includes(nuevo_estado)) {
+        if (!ticket.fecha_resolucion) ticket.fecha_resolucion = new Date().toISOString();
+      } else {
+        ticket.fecha_resolucion = null;
       }
 
       ticket.actividades.push({
@@ -309,19 +380,22 @@ const server = http.createServer(async (req, res) => {
         es_nota_interna: Boolean(es_nota_interna)
       });
 
-      console.log(`[TICKET ACTUALIZADO] ${ticket_id} -> ${nuevo_estado} (Versión ${ticket.version})`);
+      operationsGuardadas.set(operation_id, { version: ticket.version });
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
         status: 'success',
-        ticket_id: ticket_id,
+        codigo: 200,
+        duplicada: false,
+        ticket_id,
+        estado: nuevo_estado,
         version: ticket.version,
         mensaje: `Ticket ${ticket_id} actualizado con éxito al estado ${nuevo_estado}.`
       }));
       return;
     }
 
-    // 5. CALIFICACIÓN DE SATISFACCIÓN CSAT (1-5 ESTRELLAS)
+    // 5. CALIFICACIÓN CSAT (POST)
     if (pathname === '/webhook/calificar-ticket' && req.method === 'POST') {
       const body = await parseJsonBody(req);
       const { ticket_id, tracking_token, puntuacion, retroalimentacion } = body;
@@ -329,7 +403,7 @@ const server = http.createServer(async (req, res) => {
       const ticket = tickets.find(t => t.ticket_id === ticket_id && t.tracking_token === tracking_token);
       if (!ticket) {
         res.writeHead(404, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 'error', mensaje: 'Ticket no válido para calificación.' }));
+        res.end(JSON.stringify({ status: 'error', codigo: 404, mensaje: 'Ticket no válido para calificación.' }));
         return;
       }
 
@@ -343,49 +417,27 @@ const server = http.createServer(async (req, res) => {
         es_nota_interna: false
       });
 
-      console.log(`[CSAT REGISTRADO] ${ticket_id} -> ${puntuacion}/5 estrellas`);
-
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
         status: 'success',
-        ticket_id: ticket_id,
-        puntuacion: puntuacion,
-        mensaje: 'Calificación de calidad almacenada con éxito en PostgreSQL.'
+        codigo: 200,
+        ticket_id,
+        puntuacion,
+        mensaje: 'Calificación almacenada con éxito.'
       }));
       return;
     }
 
-    // Ruta no encontrada
+    // Ruta 404
     res.writeHead(404, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ status: 'error', mensaje: 'Endpoint no encontrado en el simulador n8n.' }));
+    res.end(JSON.stringify({ status: 'error', codigo: 404, mensaje: 'Endpoint no encontrado en el simulador n8n.' }));
 
   } catch (err) {
-    console.error('Error procesando solicitud:', err);
     res.writeHead(500, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ status: 'error', mensaje: err.message }));
+    res.end(JSON.stringify({ status: 'error', codigo: 500, mensaje: err.message }));
   }
 });
 
-function cryptoRandomUuid() {
-  const b = require('crypto').randomBytes(16);
-  b[6] = (b[6] & 0x0f) | 0x40;
-  b[8] = (b[8] & 0x3f) | 0x80;
-  const hex = b.toString('hex');
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-}
-
 server.listen(PORT, '0.0.0.0', () => {
-  console.log('================================================================');
-  console.log(`  🚀 SERVIDOR SIMULADOR n8n + POSTGRESQL ACTIVO EN PUERTO ${PORT}`);
-  console.log('================================================================');
-  console.log(`  - Endpoint base: http://localhost:${PORT}`);
-  console.log('  - Webhooks simulados:');
-  console.log('      • GET  /webhook/consultar-ticket?id=...&token=... (Ping & Tracking)');
-  console.log('      • POST /webhook/radicar-pqrs');
-  console.log('      • GET  /webhook/consultar-pqrs (RBAC protegido)');
-  console.log('      • POST /webhook/actualizar-ticket');
-  console.log('      • POST /webhook/calificar-ticket (CSAT)');
-  console.log('----------------------------------------------------------------');
-  console.log('  Presiona Ctrl + C para detener el simulador.');
-  console.log('================================================================\n');
+  console.log(`[SIMULADOR n8n + POSTGRESQL] Activo en http://localhost:${PORT}`);
 });
