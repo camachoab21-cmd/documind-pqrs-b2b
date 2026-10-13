@@ -21,7 +21,8 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo [1/2] Iniciando servidor de webhooks en segundo plano...
+echo [1/2] Liberando puerto 5678 e iniciando simulador en segundo plano...
+docker stop n8n_local pqrs-n8n >nul 2>&1
 start "Simulador n8n PQRS" /min cmd /c "node tests\servidor_simulador.js"
 
 echo Esperando inicializacion del puerto 5678...

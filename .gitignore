@@ -1,3 +1,22 @@
+# Dependencies
 node_modules/
+
+# Environment variables
 .env
+*.env.local
+
+# Logs
 *.log
+npm-debug.log*
+
+# Build outputs & uploads
+dist/
+uploads/
+.cache/
+*report.json
+
+# Docker volumes & system
+n8n_data/
+pqrs_pgdata/
+.DS_Store
+Thumbs.db

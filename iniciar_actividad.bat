@@ -39,7 +39,9 @@ if "%ERRORLEVEL%"=="0" (
 )
 
 echo.
-echo [2/4] Levantando contenedores locales (PostgreSQL + n8n)...
+echo [2/4] Verificando puertos y levantando contenedores locales (PostgreSQL + n8n)...
+powershell -Command "Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like '*servidor_simulador*' } | Stop-Process -Force" >nul 2>&1
+docker stop postgres n8n_local >nul 2>&1
 docker compose up -d
 if "%ERRORLEVEL%" neq "0" (
     color 0C

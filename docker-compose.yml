@@ -1,6 +1,7 @@
+name: actividad-pqrs
 services:
   pqrs-postgres:
-    image: postgres:16
+    image: postgres:16-alpine
     container_name: pqrs-postgres
     restart: unless-stopped
     environment:
@@ -9,12 +10,13 @@ services:
       POSTGRES_PASSWORD: pqrs_password
     volumes:
       - pqrs_pgdata:/var/lib/postgresql/data
-      - ./database/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql:ro
+      - ./database/init_db.sql:/docker-entrypoint-initdb.d/01_init_pqrs.sql:ro
+      - ./database/documind_postgres_schema.sql:/docker-entrypoint-initdb.d/02_init_documind.sql:ro
     ports:
       - "5432:5432"
 
   n8n:
-    image: n8nio/n8n:2.4.8
+    image: n8nio/n8n:latest
     container_name: pqrs-n8n
     restart: unless-stopped
     ports:
