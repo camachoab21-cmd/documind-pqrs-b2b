@@ -11,26 +11,23 @@ async function migrarTablasChatHistorial() {
   try {
     await db.query(`
       CREATE TABLE IF NOT EXISTS chat_threads (
-        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-        usuario_id BIGINT UNSIGNED NOT NULL,
-        repositorio_id BIGINT UNSIGNED NULL,
+        id BIGSERIAL PRIMARY KEY,
+        usuario_id BIGINT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+        repositorio_id BIGINT REFERENCES repositorios(id) ON DELETE SET NULL,
         titulo VARCHAR(255) NOT NULL,
-        creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE ON UPDATE CASCADE,
-        FOREIGN KEY (repositorio_id) REFERENCES repositorios(id) ON DELETE SET NULL ON UPDATE CASCADE
-      ) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+        creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
     `);
 
     await db.query(`
       CREATE TABLE IF NOT EXISTS chat_messages (
-        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-        thread_id BIGINT UNSIGNED NOT NULL,
-        rol ENUM('user', 'ia') NOT NULL,
+        id BIGSERIAL PRIMARY KEY,
+        thread_id BIGINT NOT NULL REFERENCES chat_threads(id) ON DELETE CASCADE,
+        rol VARCHAR(20) NOT NULL,
         contenido TEXT NOT NULL,
-        fuentes JSON NULL,
-        creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (thread_id) REFERENCES chat_threads(id) ON DELETE CASCADE ON UPDATE CASCADE
-      ) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+        fuentes JSONB,
+        creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
     `);
 
     console.log('✅ Tablas de historial de chat verificadas/creadas correctamente.');

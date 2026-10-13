@@ -39,8 +39,7 @@ if "%ERRORLEVEL%"=="0" (
 :: 2. Levantar servicios de base de datos y n8n
 echo.
 echo [2/5] Levantando contenedores (PostgreSQL Unificado + n8n)...
-powershell -Command "Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like '*servidor_simulador*' } | Stop-Process -Force" >nul 2>&1
-docker stop postgres n8n_local >nul 2>&1
+powershell -Command "Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like '*servidor_simulador*' -or $_.CommandLine -like '*server.js*' -or $_.CommandLine -like '*vite*' } | Stop-Process -Force" >nul 2>&1
 docker compose up -d
 if "%ERRORLEVEL%" neq "0" (
     color 0C
@@ -52,18 +51,22 @@ if "%ERRORLEVEL%" neq "0" (
 :: 3. Iniciar Backend Node.js
 echo.
 echo [3/5] Levantando Backend API (Node.js / Express en puerto 5000)...
-start "DocuMind Backend API" /min cmd /c "cd /d \"%~dp0backend\" && npm run dev"
-timeout /t 2 /nobreak >nul
+start "DocuMind Backend API" /d "%~dp0backend" cmd /k "npm run dev"
+echo   ... esperando que Backend inicialice en puerto 5000
+powershell -Command "for ($i=0; $i -lt 20; $i++) { if (Test-NetConnection -ComputerName localhost -Port 5000 -InformationLevel Quiet) { exit 0 }; Start-Sleep -Seconds 1 }; exit 1" >nul 2>&1
 
 :: 4. Iniciar Frontend Vite
 echo.
 echo [4/5] Levantando Frontend (React + Vite en puerto 5173)...
-start "DocuMind Frontend Vite" /min cmd /c "cd /d \"%~dp0frontend\" && npm run dev"
-timeout /t 3 /nobreak >nul
+start "DocuMind Frontend Vite" /d "%~dp0frontend" cmd /k "npm run dev"
+echo   ... esperando que Frontend Vite compile y abra puerto 5173
+powershell -Command "for ($i=0; $i -lt 30; $i++) { if (Test-NetConnection -ComputerName localhost -Port 5173 -InformationLevel Quiet) { exit 0 }; Start-Sleep -Seconds 1 }; exit 1" >nul 2>&1
 
-:: 5. Abrir en Navegador
+:: 5. Verificar n8n y Abrir en Navegador
 echo.
-echo [5/5] Abriendo Plataforma en tu navegador...
+echo [5/5] Verificando n8n y abriendo plataforma en tu navegador...
+powershell -Command "for ($i=0; $i -lt 15; $i++) { if (Test-NetConnection -ComputerName localhost -Port 5678 -InformationLevel Quiet) { exit 0 }; Start-Sleep -Seconds 1 }; exit 0" >nul 2>&1
+
 start http://localhost:5173
 start http://localhost:5678
 
@@ -71,9 +74,10 @@ echo.
 echo ========================================================
 echo   TODO LISTO Y OPERATIVO:
 echo   - Portal Unificado DocuMind + PQRS: http://localhost:5173
+echo   - Portal Publico de Radicacion:      http://localhost:5173/radicar
 echo   - Backend API REST (Node.js):        http://localhost:5000/api/health
-echo   - Motor n8n:                         http://localhost:5678
-echo   - PostgreSQL (Tablas y RAG):         localhost:5432 (pqrs_db)
+echo   - Motor n8n (Tu cuenta previa):      http://localhost:5678
+echo   - PostgreSQL Unificado:              localhost:5432 (pqrs_db)
 echo.
 echo   Para apagar todos los servicios y liberar memoria:
 echo   ejecuta detener_documind_pqrs.bat

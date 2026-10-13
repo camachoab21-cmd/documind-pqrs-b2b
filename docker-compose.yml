@@ -1,4 +1,4 @@
-name: actividad-pqrs
+name: actividad-pqrs-b2b
 services:
   pqrs-postgres:
     image: postgres:16-alpine
@@ -37,4 +37,6 @@ services:
 
 volumes:
   pqrs_pgdata:
+    name: actividad-pqrs-b2b_pqrs_pgdata
   n8n_data:
+    name: actividad-pqrs-b2b_n8n_data

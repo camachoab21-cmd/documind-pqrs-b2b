@@ -13,14 +13,15 @@ CREATE TABLE IF NOT EXISTS usuarios (
     creado_en TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Usuario administrador por defecto para DocuMind
+-- Usuarios por defecto para DocuMind (Contraseña: password_seguro_uts)
 INSERT INTO usuarios (nombre, email, password_hash, rol)
-VALUES (
-    'Administrador DocuMind',
-    'admin@documind.com',
-    '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', -- admin123
-    'ADMIN'
-) ON CONFLICT (email) DO NOTHING;
+VALUES 
+    ('Administrador DocuMind', 'admin@documind.com', '$2a$10$inMDuPuEs2rAqT3Prep64e63ZcjoIS2GAPvq/4YV1wxaT9/tah4aO', 'ADMIN'),
+    ('Wilson Castaño', 'wilson.admin@documind.com', '$2a$10$inMDuPuEs2rAqT3Prep64e63ZcjoIS2GAPvq/4YV1wxaT9/tah4aO', 'ADMIN'),
+    ('Diana Rodríguez', 'diana.legal@documind.com', '$2a$10$inMDuPuEs2rAqT3Prep64e63ZcjoIS2GAPvq/4YV1wxaT9/tah4aO', 'LEGAL'),
+    ('Carlos Sánchez', 'carlos.financiero@documind.com', '$2a$10$inMDuPuEs2rAqT3Prep64e63ZcjoIS2GAPvq/4YV1wxaT9/tah4aO', 'FINANCIERO'),
+    ('María Torres', 'maria.reclutador@documind.com', '$2a$10$inMDuPuEs2rAqT3Prep64e63ZcjoIS2GAPvq/4YV1wxaT9/tah4aO', 'RECLUTADOR')
+ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash;
 
 -- 2. Tabla de Repositorios (Carpetas lógicas de conocimiento)
 CREATE TABLE IF NOT EXISTS repositorios (
