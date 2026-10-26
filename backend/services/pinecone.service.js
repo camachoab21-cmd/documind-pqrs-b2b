@@ -2,21 +2,32 @@ import { Pinecone } from '@pinecone-database/pinecone';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { getSecret } from '../utils/secrets.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+dotenv.config({ path: join(__dirname, '../.env') });
 dotenv.config({ path: join(__dirname, '../config/.env') });
 
 let pcInstance = null;
 let indexInstance = null;
+
+function getPineconeApiKey() {
+  return getSecret('PINECONE_API_KEY', {
+    defaultValue: null,
+    disallowDefaultInProduction: false,
+  });
+}
 
 /**
  * Obtiene la instancia del índice Pinecone (singleton lazy)
  */
 function getIndex() {
   if (!indexInstance) {
-    pcInstance = new Pinecone({ apiKey: process.env.PINECONE_API_KEY });
-    indexInstance = pcInstance.index(process.env.PINECONE_INDEX_NAME);
+    const apiKey = getPineconeApiKey();
+    const indexName = process.env.PINECONE_INDEX_NAME || process.env.PINECONE_INDEX || 'documind';
+    pcInstance = new Pinecone({ apiKey });
+    indexInstance = pcInstance.index(indexName);
   }
   return indexInstance;
 }
@@ -24,11 +35,16 @@ function getIndex() {
 /**
  * Indexa chunks de texto con sus embeddings en Pinecone
  * @param {Array<{texto: string, embedding: number[], pageNum: number}>} chunks
- * @param {number} documentoId - ID del documento en MySQL
- * @param {number} repositorioId - ID del repositorio en MySQL
+ * @param {number} documentoId - ID del documento en MySQL / PostgreSQL
+ * @param {number} repositorioId - ID del repositorio en MySQL / PostgreSQL
  * @param {string} nombreArchivo - Nombre del archivo para trazabilidad
  */
 export async function upsertChunks(chunks, documentoId, repositorioId, nombreArchivo, urlDescarga) {
+  if (!getPineconeApiKey()) {
+    console.warn('[Pinecone Service] PINECONE_API_KEY no configurada. Omitiendo indexación vectorial.');
+    return;
+  }
+
   const index = getIndex();
 
   const vectors = chunks.map((chunk, i) => ({
@@ -55,23 +71,39 @@ export async function upsertChunks(chunks, documentoId, repositorioId, nombreArc
 /**
  * Busca los vectores más similares en Pinecone para una query dada
  * @param {number[]} queryVector - Embedding de 768 dims de la consulta
- * @param {number|null} repositorioId - Filtro opcional por repositorio
+ * @param {number|number[]|null} repositorioId - Filtro opcional por repositorio único o lista de repositorios autorizados
  * @param {number} topK - Número de resultados a retornar (default 3)
  * @returns {Promise<Array>} Matches con metadata incluida
  */
 export async function queryVectores(queryVector, repositorioId = null, topK = 3) {
-  const index = getIndex();
+  if (!getPineconeApiKey()) {
+    console.warn('[Pinecone Service] PINECONE_API_KEY no configurada.');
+    return [];
+  }
 
-  const filter = repositorioId ? { repositorio_id: { $eq: repositorioId } } : undefined;
+  try {
+    const index = getIndex();
+    let filter;
 
-  const response = await index.query({
-    vector: queryVector,
-    topK,
-    includeMetadata: true,
-    filter,
-  });
+    if (Array.isArray(repositorioId)) {
+      if (repositorioId.length === 0) return [];
+      filter = { repositorio_id: { $in: repositorioId } };
+    } else if (repositorioId) {
+      filter = { repositorio_id: { $eq: repositorioId } };
+    }
 
-  return response.matches || [];
+    const response = await index.query({
+      vector: queryVector,
+      topK,
+      includeMetadata: true,
+      filter,
+    });
+
+    return response.matches || [];
+  } catch (err) {
+    console.warn('[Pinecone Service] Error al consultar vectores:', err.message);
+    return [];
+  }
 }
 
 /**
@@ -79,17 +111,20 @@ export async function queryVectores(queryVector, repositorioId = null, topK = 3)
  * @param {number} documentoId - ID del documento a eliminar
  */
 export async function eliminarVectoresDocumento(documentoId) {
-  const index = getIndex();
+  if (!getPineconeApiKey()) return;
 
-  // Pinecone no permite borrar por prefijo directamente en todos los planes
-  // Usamos deleteMany con filtro de metadata si está disponible, sino por IDs conocidos
   try {
-    await index.deleteMany({
-      filter: { documento_id: { $eq: documentoId } },
-    });
-  } catch {
-    // Fallback: intentar eliminar IDs predecibles (hasta 500 chunks)
-    const ids = Array.from({ length: 500 }, (_, i) => `doc_${documentoId}_chunk_${i}`);
-    await index.deleteMany(ids);
+    const index = getIndex();
+    try {
+      await index.deleteMany({
+        filter: { documento_id: { $eq: documentoId } },
+      });
+    } catch {
+      // Fallback: intentar eliminar IDs predecibles (hasta 500 chunks)
+      const ids = Array.from({ length: 500 }, (_, i) => `doc_${documentoId}_chunk_${i}`);
+      await index.deleteMany(ids);
+    }
+  } catch (err) {
+    console.warn('[Pinecone Service] Error al eliminar vectores:', err.message);
   }
 }

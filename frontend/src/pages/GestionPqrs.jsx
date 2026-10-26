@@ -434,14 +434,15 @@ export default function GestionPqrs() {
             {/* Modal Footer */}
             <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-between items-center">
               <button
+                id="btn-consultar-solucion-ia"
                 onClick={() => {
-                  const queryText = `¿Cómo resolver el ticket ${selectedTicket.ticket_id} sobre ${selectedTicket.asunto}?`;
-                  navigate(`/chat?query=${encodeURIComponent(queryText)}`);
+                  const queryText = `¿Cómo resolver la solicitud ${selectedTicket.ticket_id} (${selectedTicket.tipo_solicitud || 'PQRS'} - ${selectedTicket.departamento}): "${selectedTicket.asunto}"? Detalle del caso: "${selectedTicket.descripcion || ''}". ¿Cuál es el diagnóstico técnico/operativo, las políticas aplicables y la respuesta recomendada para el cliente?`;
+                  navigate(`/chat?query=${encodeURIComponent(queryText)}&repo=all`);
                 }}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold hover:bg-indigo-100 transition-colors"
+                className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold hover:bg-indigo-100 transition-colors shadow-sm"
               >
                 <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-                Consultar Solución en Chat RAG
+                Consultar Solución con IA en Chat RAG
               </button>
               <button
                 onClick={() => setSelectedTicket(null)}

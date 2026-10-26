@@ -2,12 +2,18 @@ import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { getSecret } from '../utils/secrets.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+dotenv.config({ path: join(__dirname, '../.env') });
 dotenv.config({ path: join(__dirname, '../config/.env') });
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const geminiApiKey = getSecret('GEMINI_API_KEY', {
+  defaultValue: process.env.GEMINI_API_KEY || null,
+  disallowDefaultInProduction: false,
+});
+const ai = new GoogleGenAI({ apiKey: geminiApiKey || '' });
 
 /**
  * Envoltorio con timeout estricto para evitar bloqueos por latencia de red.
@@ -320,6 +326,9 @@ export async function analizarDocumentoConGemini(textoPlano) {
   };
 
   const candidateModels = [
+    'gemini-3.5-flash-lite',
+    'gemini-3.1-flash-lite',
+    'gemini-3.5-flash',
     'gemini-2.0-flash',
     'gemini-1.5-flash',
     'gemini-1.5-flash-8b',
@@ -338,7 +347,7 @@ export async function analizarDocumentoConGemini(textoPlano) {
             temperature: 0.2,
           },
         }),
-        6000
+        8000
       );
 
       const parsed = JSON.parse(response.text);
@@ -371,7 +380,7 @@ function generarVectorHash768(texto) {
  * Vectoriza un chunk de texto con failover entre modelos y timeout controlado.
  */
 export async function generarEmbeddingGoogle(textoChunk) {
-  const candidateEmbeddingModels = ['text-embedding-004', 'embedding-001'];
+  const candidateEmbeddingModels = ['gemini-embedding-001', 'text-embedding-004', 'embedding-001'];
 
   for (const modelName of candidateEmbeddingModels) {
     try {

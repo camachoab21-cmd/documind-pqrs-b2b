@@ -68,14 +68,18 @@ export default function Sidebar({ onRepoSelect, selectedRepo }) {
 
     setCreatingRepo(true);
     try {
-      await repositoriesAPI.create({
+      const res = await repositoriesAPI.create({
         nombre: newRepoNombre.trim(),
         departamento: newRepoDept.trim(),
       });
+      const nuevo = res.data?.repositorio;
       setNewRepoNombre('');
       setNewRepoDept('');
       setShowNewRepo(false);
       await cargarRepositorios();
+      if (nuevo && onRepoSelect) {
+        onRepoSelect(nuevo);
+      }
     } catch {
       // Silencioso
     } finally {

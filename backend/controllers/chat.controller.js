@@ -2,10 +2,18 @@ import { GoogleGenAI } from '@google/genai';
 import { generarEmbeddingGoogle } from '../services/gemini.service.js';
 import { queryVectores } from '../services/pinecone.service.js';
 import db from '../config/db.js';
+import { getSecret } from '../utils/secrets.js';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const geminiApiKey = getSecret('GEMINI_API_KEY', {
+  defaultValue: process.env.GEMINI_API_KEY || null,
+  disallowDefaultInProduction: false,
+});
+const ai = new GoogleGenAI({ apiKey: geminiApiKey || '' });
 
 const CANDIDATE_MODELS = [
+  'gemini-3.5-flash-lite',
+  'gemini-3.1-flash-lite',
+  'gemini-3.5-flash',
   'gemini-2.0-flash',
   'gemini-1.5-flash',
   'gemini-1.5-flash-8b',
@@ -82,7 +90,7 @@ function generarRespuestaAnaliticaRespaldo(match, query) {
   }
 
   // Respuesta a consulta abierta sin documento específico
-  return `¡Hola! Soy **DocuMind**, tu asistente inteligente de gestión y análisis documental.\n\nPuedo ayudarte en tiempo real con:\n- 📄 **Análisis y comparación** de contratos, facturas y hojas de vida.\n- 🔍 **Búsqueda contextual profunda** en todos tus repositorios empresariales.\n- 💡 **Recomendaciones estratégicas** y resolución de dudas técnicas, comerciales o legales.\n\n¿En qué documento o tema te gustaría que trabajemos ahora?`;
+  return `No he encontrado información relevante en los documentos cargados para responder a tu consulta.\n\n¡Hola! Soy **DocuMind**, tu asistente inteligente de gestión y análisis documental.\n\nPuedo ayudarte en tiempo real con:\n- 📄 **Análisis y comparación** de contratos, facturas y hojas de vida.\n- 🔍 **Búsqueda contextual profunda** en todos tus repositorios empresariales.\n- 💡 **Recomendaciones estratégicas** y resolución de dudas técnicas, comerciales o legales.\n\n¿En qué documento o tema te gustaría que trabajemos ahora?`;
 }
 
 /**
@@ -97,17 +105,115 @@ export async function consultarRAG(req, res) {
   }
 
   try {
-    // 1. Vectorizar la consulta y buscar contexto en Pinecone (top_k=12 para cubrir más documentos)
-    const queryVector = await generarEmbeddingGoogle(query);
-    let matches = await queryVectores(queryVector, repositorio_id ? parseInt(repositorio_id) : null, 12);
+    const rolUsuario = req.user?.rol?.toUpperCase();
+    const ROLES_GLOBALES = ['ADMIN', 'AGENTE', 'SUPERVISOR'];
+    let targetRepoFilter = null;
+    let authorizedRepoIds = null;
 
-    // Búsqueda global si el repo local no contiene coincidencias
-    if (matches.length === 0 && repositorio_id) {
-      matches = await queryVectores(queryVector, null, 12);
+    if (repositorio_id) {
+      const repoIdNum = parseInt(repositorio_id, 10);
+      if (isNaN(repoIdNum) || repoIdNum <= 0) {
+        return res.status(400).json({ ok: false, mensaje: 'Identificador de repositorio inválido.' });
+      }
+
+      // Validar existencia y permisos sobre el repositorio especificado
+      const repos = await db.query(
+        'SELECT id, departamento, usuario_id FROM repositorios WHERE id = ?',
+        [repoIdNum]
+      );
+      if (repos.length === 0) {
+        return res.status(404).json({ ok: false, mensaje: 'Repositorio no encontrado.' });
+      }
+
+      const repo = repos[0];
+      if (!ROLES_GLOBALES.includes(rolUsuario)) {
+        let deptoPermitido = 'Legal';
+        if (rolUsuario === 'FINANCIERO') deptoPermitido = 'Financiero';
+        if (rolUsuario === 'RECLUTADOR') deptoPermitido = 'Recursos Humanos';
+
+        const tieneAcceso = (repo.departamento === deptoPermitido) || (repo.usuario_id === req.user?.id);
+        if (!tieneAcceso) {
+          return res.status(403).json({
+            ok: false,
+            mensaje: 'Acceso denegado. No tiene permisos para consultar este repositorio.',
+          });
+        }
+      }
+
+      targetRepoFilter = repoIdNum;
+      authorizedRepoIds = [repoIdNum];
+    } else {
+      // Consulta sin repositorio explícito: acotar a los repositorios autorizados para el usuario
+      if (!ROLES_GLOBALES.includes(rolUsuario)) {
+        let deptoPermitido = 'Legal';
+        if (rolUsuario === 'FINANCIERO') deptoPermitido = 'Financiero';
+        if (rolUsuario === 'RECLUTADOR') deptoPermitido = 'Recursos Humanos';
+
+        const reposPermitidos = await db.query(
+          'SELECT id FROM repositorios WHERE departamento = ? OR usuario_id = ?',
+          [deptoPermitido, req.user?.id]
+        );
+        authorizedRepoIds = reposPermitidos.map((r) => r.id);
+
+        if (authorizedRepoIds.length === 0) {
+          return res.status(200).json({
+            ok: true,
+            respuesta: 'No se encontraron repositorios asignados a su departamento para consultar.',
+            fuentes_citadas: [],
+          });
+        }
+        targetRepoFilter = authorizedRepoIds;
+      }
     }
 
-    const MIN_SCORE = 0.50; // Umbral más permisivo para recuperar más contexto
-    const relevantMatches = matches.filter((m) => m.score >= MIN_SCORE);
+    // 1. Vectorizar la consulta y buscar contexto en Pinecone con filtro estricto
+    // 1. Vectorizar la consulta y buscar contexto en Pinecone con filtro estricto
+    const queryVector = await generarEmbeddingGoogle(query);
+    const topK = 24; // Amplio para capturar fragmentos de múltiples documentos a la vez
+    let matches = await queryVectores(queryVector, targetRepoFilter, topK);
+
+    // Resiliencia para consultas comparativas o multi-repositorio: si el filtro de repositorio específico
+    // arrojó pocos fragmentos (< 4) o solo de un documento, complementar con los repositorios autorizados
+    if (targetRepoFilter && matches.length < 5) {
+      try {
+        const broaderMatches = await queryVectores(queryVector, authorizedRepoIds, topK);
+        const existingIds = new Set(matches.map((m) => m.id));
+        for (const bm of broaderMatches) {
+          if (!existingIds.has(bm.id)) {
+            matches.push(bm);
+          }
+        }
+      } catch (broaderErr) {
+        console.warn('[Chat RAG] Búsqueda complementaria advierte:', broaderErr.message);
+      }
+    }
+
+    // Defensa en profundidad: garantizar que ningún fragmento no autorizado se filtre
+    if (authorizedRepoIds && authorizedRepoIds.length > 0) {
+      matches = matches.filter((m) => {
+        const docRepoId = Number(m.metadata?.repositorio_id);
+        return authorizedRepoIds.includes(docRepoId);
+      });
+    }
+
+    const MIN_SCORE = 0.48; // Umbral de similitud óptimo para comparaciones
+    let relevantMatches = matches.filter((m) => m.score >= MIN_SCORE);
+
+    // Validación estricta de existencia y vigencia del documento en PostgreSQL (defensa contra vectores huérfanos)
+    if (relevantMatches.length > 0) {
+      const docIds = [...new Set(relevantMatches.map((m) => Number(m.metadata?.documento_id)).filter((id) => !isNaN(id) && id > 0))];
+      if (docIds.length > 0) {
+        const placeholders = docIds.map(() => '?').join(', ');
+        const docsValidos = await db.query(
+          `SELECT id FROM documentos WHERE id IN (${placeholders}) AND estado_procesamiento = 'COMPLETADO'`,
+          docIds
+        );
+        const idsValidos = new Set(docsValidos.map((d) => Number(d.id)));
+        relevantMatches = relevantMatches.filter((m) => idsValidos.has(Number(m.metadata?.documento_id)));
+      } else {
+        relevantMatches = [];
+      }
+    }
 
     let contextoDocumental = '';
     if (relevantMatches.length > 0) {
@@ -129,13 +235,21 @@ export async function consultarRAG(req, res) {
          - Si preguntan por una persona u hoja de vida: evalúa su perfil, fortalezas, tecnologías y adecuación para puestos.
          - Si preguntan por una factura: analiza montos, desglose de impuestos, pagos y fechas de vencimiento.
          - Si preguntan por un contrato: interpreta cláusulas, obligaciones, plazos y riesgos legales.
+         - Si piden COMPARAR DOCUMENTOS, CONTRATOS O PROPUESTAS:
+           * Elabora una TABLA COMPARATIVA en Markdown clara y estructurada (| Criterio | Documento A | Documento B | ... |) contrastando Partes, Objeto, Montos/Tarifas, Vigencias, SLAs, Penalizaciones y Riesgos.
+           * Explica las principales diferencias y ventajas/desventajas de cada uno.
+           * Concluye con una recomendación ejecutiva fundamentada sobre cuál opción es preferible o qué precauciones contractuales tomar.
+         - Si preguntan por CÓMO RESOLVER UN TICKET O PQRS:
+           * Diagnóstico del caso: identifica la causa y la política interna aplicable según los manuales o contratos del sistema.
+           * Plan de acción paso a paso para el funcionario/agente (actividades inmediatas dentro del SLA).
+           * Propuesta de respuesta formal al cliente: redacta un modelo de mensaje profesional, claro y empático que el funcionario pueda enviar.
          - Si es una pregunta general o fuera de los archivos: responde con inteligencia general, de forma útil, creativa y cordial.
       3. APORTA VALOR Y ALTERNATIVAS: No te limites a repetir fragmentos de texto. Sintetiza la información, explica qué significa y propone 2 o 3 alternativas o cursos de acción claros según el contexto.
-      4. REFERENCIAS: Cuando uses información de un documento, menciona naturalmente de qué archivo proviene (ej: "Según lo registrado en el CV de Juan Pérez...").
-      5. FORMATO: Emplea Markdown limpio con negritas, viñetas y títulos claros cuando amerite para que sea muy legible.
+      4. REFERENCIAS: Cuando uses información de un documento, menciona naturalmente de qué archivo proviene (ej: "Según lo estipulado en el contrato_soporte_hosting.docx...").
+      5. FORMATO: Emplea Markdown limpio con negritas, tablas, viñetas y títulos claros para máxima legibilidad.
       6. IDIOMA: Responde en español impecable.
 
-      ${contextoDocumental ? `DOCUMENTOS RELEVANTES ENCONTRADOS EN EL SISTEMA:\n${contextoDocumental}` : 'NOTA: No se hallaron documentos específicos con alta similitud para esta consulta. Responde como un asistente de IA experto usando tu conocimiento general y guiando al usuario.'}
+      ${contextoDocumental ? `DOCUMENTOS RELEVANTES ENCONTRADOS EN EL SISTEMA:\n${contextoDocumental}` : 'NOTA: No se hallaron documentos específicos con alta similitud para esta consulta. Inicia tu respuesta indicando de manera honesta y explícita: "No he encontrado información relevante en los documentos cargados para responder a tu consulta." Luego puedes brindar una orientación general breve si corresponde.'}
     `;
 
     // 3. Generación con failover multi-modelo
@@ -173,12 +287,11 @@ export async function consultarRAG(req, res) {
       );
     }
 
-    // 4. Mapear fuentes citadas para el frontend
-    // url_descarga viene directamente del metadata de Pinecone (guardada al indexar)
+    // 4. Mapear fuentes citadas para el frontend mediante endpoint protegido
     const fuentesCitadas = relevantMatches.map((match) => ({
       documento_id: match.metadata.documento_id,
       nombre_archivo: match.metadata.nombre_archivo,
-      url_descarga: match.metadata.url_descarga || null,
+      url_descarga: match.metadata.documento_id ? `/api/documents/${match.metadata.documento_id}/archivo` : null,
       pagina: match.metadata.page_num || 1,
       score: match.score,
     }));

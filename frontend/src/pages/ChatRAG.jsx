@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Send, FileText, Bot, User, Loader2, MessageSquare, Trash2, AlertCircle, Filter, Plus, MessageCircle, Eye, X } from 'lucide-react';
 import { chatAPI, repositoriesAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -90,27 +91,84 @@ function MensajeIA({ respuesta, fuentes, onViewDoc }) {
 
 const MENSAJE_BIENVENIDA = {
   tipo: 'ia',
-  respuesta: `¡Hola! Soy **DocuMind**, tu asistente conversacional de documentos empresariales. 🤖\n\nPuedo responder preguntas basadas en los documentos indexados en tus repositorios. Prueba preguntarme:\n\n• ⚖️ ¿Qué penalizaciones tiene el contrato de servicios oriente?\n• 💵 ¿Cuál es el valor total y fecha de pago de la factura de ESSA?\n• 👥 ¿Qué tecnologías domina Carlos Mendoza y cuántos años de experiencia tiene?\n\n*Nota: Respondo con información exacta y trazable citando las fuentes documentales.*`,
+  respuesta: `¡Hola! Soy **DocuMind**, tu asistente conversacional y motor de análisis documental inteligente. 🤖\n\nPuedo responder preguntas, realizar comparaciones profundas entre documentos, resolver radicados de PQRS y analizar contratos o normativas.\n\nPrueba preguntarme:\n\n• 📊 **Comparación:** *"Compara el contrato de outsourcing IT con el de soporte hosting"*\n• ⚖️ **Auditoría Legal:** *"Compara el contrato de papelería con el de seguridad privada"*\n• 💡 **Resolución PQRS:** *"¿Cómo resolver una queja de lentitud o garantía según las políticas corporativas?"*\n\n*Nota: Respondo con citas exactas y trazabilidad a los documentos indexados en el sistema.*`,
   fuentes: [],
 };
 
 export default function ChatRAG({ selectedRepo }) {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlQueryProcessed = useRef(false);
+
   const [mensajes, setMensajes] = useState([MENSAJE_BIENVENIDA]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [repositorios, setRepositorios] = useState([]);
-  const [filtroRepoId, setFiltroRepoId] = useState(selectedRepo ? String(selectedRepo.id) : '');
+  // Por defecto, buscar en todos los repositorios para máxima cobertura en comparaciones
+  const [filtroRepoId, setFiltroRepoId] = useState('');
   
   // Hilos de chat
   const [threads, setThreads] = useState([]);
   const [activeThreadId, setActiveThreadId] = useState(null);
   const [loadingThreads, setLoadingThreads] = useState(false);
   
-  // Visor de documentos
+  // Visor de documentos con ciclo de vida seguro de Object URL
   const [docViewerUrl, setDocViewerUrl] = useState(null);
   const [docViewerTitle, setDocViewerTitle] = useState('');
+  const [docBlobUrl, setDocBlobUrl] = useState(null);
+  const [loadingDoc, setLoadingDoc] = useState(false);
+
+  const docBlobUrlRef = useRef(null);
+
+  useEffect(() => {
+    if (docBlobUrlRef.current) {
+      URL.revokeObjectURL(docBlobUrlRef.current);
+      docBlobUrlRef.current = null;
+    }
+
+    if (!docViewerUrl) {
+      setDocBlobUrl(null);
+      return;
+    }
+
+    const abortController = new AbortController();
+    setLoadingDoc(true);
+    const token = localStorage.getItem('documind_token');
+    const fullUrl = docViewerUrl.startsWith('http') ? docViewerUrl : `http://localhost:5000${docViewerUrl}`;
+
+    fetch(fullUrl, {
+      signal: abortController.signal,
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}: Error al cargar documento`);
+        return res.blob();
+      })
+      .then((blob) => {
+        const objectUrl = URL.createObjectURL(blob);
+        docBlobUrlRef.current = objectUrl;
+        setDocBlobUrl(objectUrl);
+      })
+      .catch((err) => {
+        if (err.name === 'AbortError') return;
+        console.error('Error fetching document blob:', err);
+        setDocBlobUrl(null);
+      })
+      .finally(() => {
+        if (!abortController.signal.aborted) {
+          setLoadingDoc(false);
+        }
+      });
+
+    return () => {
+      abortController.abort();
+      if (docBlobUrlRef.current) {
+        URL.revokeObjectURL(docBlobUrlRef.current);
+        docBlobUrlRef.current = null;
+      }
+    };
+  }, [docViewerUrl]);
 
   const chatEndRef = useRef(null);
 
@@ -176,10 +234,11 @@ export default function ChatRAG({ selectedRepo }) {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [mensajes, loading]);
 
-  const createThread = async (queryText) => {
+  const createThread = async (queryText, repoIdToUse = null) => {
     try {
       const title = queryText.length > 30 ? queryText.substring(0, 30) + '...' : queryText;
-      const res = await chatAPI.createThread(title, filtroRepoId ? parseInt(filtroRepoId) : null);
+      const repoVal = repoIdToUse !== null ? repoIdToUse : (filtroRepoId ? parseInt(filtroRepoId) : null);
+      const res = await chatAPI.createThread(title, repoVal);
       const newThread = res.data.thread;
       setThreads(prev => [newThread, ...prev]);
       setActiveThreadId(newThread.id);
@@ -190,7 +249,7 @@ export default function ChatRAG({ selectedRepo }) {
     }
   };
 
-  const handleSend = async (overrideQuery = null) => {
+  const handleSend = async (overrideQuery = null, overrideRepoId = null) => {
     const query = overrideQuery || inputText.trim();
     if (!query || loading) return;
 
@@ -200,13 +259,17 @@ export default function ChatRAG({ selectedRepo }) {
     setMensajes((prev) => [...prev, { tipo: 'usuario', texto: query }]);
     setLoading(true);
 
+    const effectiveRepoId = overrideRepoId !== null 
+      ? overrideRepoId 
+      : (filtroRepoId ? parseInt(filtroRepoId) : null);
+
     let currentThreadId = activeThreadId;
     if (!currentThreadId) {
-      currentThreadId = await createThread(query);
+      currentThreadId = await createThread(query, effectiveRepoId);
     }
 
     try {
-      const res = await chatAPI.query(query, filtroRepoId ? parseInt(filtroRepoId) : null, currentThreadId);
+      const res = await chatAPI.query(query, effectiveRepoId, currentThreadId);
       const { respuesta, fuentes_citadas } = res.data;
 
       setMensajes((prev) => [...prev, { tipo: 'ia', respuesta, fuentes: fuentes_citadas }]);
@@ -225,6 +288,23 @@ export default function ChatRAG({ selectedRepo }) {
       setLoading(false);
     }
   };
+
+  // Escuchar consultas redirigidas automáticamente desde la Mesa de Ayuda PQRS
+  useEffect(() => {
+    const q = searchParams.get('query');
+    if (q && !urlQueryProcessed.current) {
+      urlQueryProcessed.current = true;
+      const targetRepo = searchParams.get('repo');
+      const repoParam = targetRepo && targetRepo !== 'all' ? parseInt(targetRepo) : null;
+      if (repoParam) {
+        setFiltroRepoId(String(repoParam));
+      } else {
+        setFiltroRepoId(''); // Buscar en todos los repositorios para resolver el caso
+      }
+      handleSend(q, repoParam);
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams]);
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -252,10 +332,10 @@ export default function ChatRAG({ selectedRepo }) {
   };
 
   const preguntasRapidas = [
-    'Hola, ¿qué puedes hacer por mí?',
-    '¿Cuáles son las penalizaciones del contrato de servicios oriente?',
-    '¿Cuál es el valor y fecha de vencimiento de la factura ESSA?',
-    '¿Qué candidato tiene experiencia en React y cuántos años?',
+    '📊 Compara el contrato de outsourcing IT con el de soporte hosting',
+    '⚖️ Compara el contrato de papelería con el de seguridad privada',
+    '🔍 ¿Cuáles son las penalizaciones del contrato de servicios oriente?',
+    '💡 Procedimiento y plazos para resolver quejas sobre garantías de producto',
   ];
 
   return (
@@ -434,8 +514,21 @@ export default function ChatRAG({ selectedRepo }) {
                 <X className="w-5 h-5 text-slate-500" />
               </button>
             </div>
-            <div className="flex-1 overflow-hidden bg-slate-100">
-              <iframe src={`http://localhost:5000${docViewerUrl}`} className="w-full h-full border-none" title="Visor" />
+            <div className="flex-1 overflow-hidden bg-slate-100 flex items-center justify-center">
+              {loadingDoc ? (
+                <div className="flex flex-col items-center gap-2 text-slate-500">
+                  <Loader2 className="w-6 h-6 animate-spin text-indigo-600" />
+                  <span className="text-xs">Cargando documento protegido...</span>
+                </div>
+              ) : docBlobUrl ? (
+                <iframe 
+                  src={docBlobUrl} 
+                  className="w-full h-full border-none" 
+                  title="Visor" 
+                />
+              ) : (
+                <div className="text-xs text-rose-500">No fue posible previsualizar el documento de forma segura.</div>
+              )}
             </div>
           </div>
         </div>

@@ -1,0 +1,107 @@
+# ==============================================================================
+# DOCUMIND & PQRS — CONFIGURACIÓN DE REFERENCIA NGINX REVERSE PROXY
+#
+# Garantiza:
+# 1. Terminación TLS segura (TLS 1.2 y 1.3).
+# 2. Servir la SPA frontend compilada (dist).
+# 3. Proxy hacia el backend API aislando cabeceras de IP:
+#    - Sobrescribe X-Real-IP con $remote_addr.
+#    - Sanitiza y reconstruye X-Forwarded-For con la IP real del cliente.
+#    - Impide que clientes maliciosos inyecten cabeceras arbitrarias.
+# ==============================================================================
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+
+    # Ocultar versión de Nginx
+    server_tokens off;
+
+    # Registros con IP real del cliente
+    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                    '$status $body_bytes_sent "$http_referer" '
+                    '"$http_user_agent" "$http_x_forwarded_for"';
+
+    access_log /var/log/nginx/access.log main;
+    error_log  /var/log/nginx/error.log warn;
+
+    sendfile        on;
+    tcp_nopush      on;
+    tcp_nodelay     on;
+    keepalive_timeout 65;
+
+    # Compresión gzip
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml;
+
+    # Redirección obligatoria HTTP -> HTTPS
+    server {
+        listen 80;
+        server_name _;
+        return 301 https://$host$request_uri;
+    }
+
+    # Servidor Principal HTTPS
+    server {
+        listen 443 ssl http2;
+        server_name _;
+
+        # Certificados SSL / TLS
+        ssl_certificate     /etc/nginx/ssl/fullchain.pem;
+        ssl_certificate_key /etc/nginx/ssl/privkey.pem;
+        ssl_protocols       TLSv1.2 TLSv1.3;
+        ssl_ciphers         HIGH:!aNULL:!MD5;
+        ssl_prefer_server_ciphers on;
+
+        # Cabeceras de seguridad globales
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self';" always;
+
+        # Tamaño máximo de carga para documentos y adjuntos (15MB)
+        client_max_body_size 15M;
+
+        # ─── Frontend SPA (React + Vite build) ────────────────────────────────
+        location / {
+            root /usr/share/nginx/html;
+            index index.html index.htm;
+            try_files $uri $uri/ /index.html;
+        }
+
+        # ─── Backend API ──────────────────────────────────────────────────────
+        location /api/ {
+            proxy_pass http://backend:5000;
+            proxy_http_version 1.1;
+
+            # Cabeceras de IP controladas por el Proxy:
+            # NOTA DE SEGURIDAD CRÍTICA:
+            # Si Nginx es el proxy perimetral directo de cara a Internet, utilizar '$remote_addr'
+            # en lugar de '$proxy_add_x_forwarded_for' DESCARTA taxativamente cualquier cabecera
+            # X-Forwarded-For falsa inyectada por el cliente atacante.
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $remote_addr;
+            proxy_set_header X-Forwarded-Proto $scheme;
+
+            # Timeouts
+            proxy_connect_timeout 10s;
+            proxy_read_timeout 60s;
+            proxy_send_timeout 60s;
+        }
+
+        # ─── n8n Webhooks (Acceso público controlado) ─────────────────────────
+        location /webhook/ {
+            proxy_pass http://pqrs-n8n:5678/webhook/;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $remote_addr;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+    }
+}

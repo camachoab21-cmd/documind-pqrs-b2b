@@ -1,0 +1,134 @@
+# ==============================================================================
+# DOCUMIND & PQRS — REFERENCIA DE TOPOLOGÍA PARA PRODUCCIÓN (EJEMPLO)
+#
+# Aislamiento de red:
+# - nginx es el único servicio con puertos publicados al host (80 / 443).
+# - backend y n8n residen en redes internas y no exponen puertos al host.
+# - postgres reside exclusivamente en db_net interna (sin exposición externa).
+# - Los secretos sensibles se montan mediante Docker Secrets en /run/secrets/
+# ==============================================================================
+
+name: documind-pqrs-prod
+
+services:
+  # ─── Proxy Inverso HTTPS y Servidor Web ──────────────────────────────────────
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: documind-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./frontend/dist:/usr/share/nginx/html:ro
+    networks:
+      - frontend_net
+      - backend_net
+    depends_on:
+      - backend
+
+  # ─── API Backend Node.js ───────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: documind-backend
+    restart: unless-stopped
+    expose:
+      - "5000"  # Exclusivamente accesible dentro de la red Docker interna
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+      - DB_HOST=pqrs-postgres
+      - DB_PORT=5432
+      - DB_USER=pqrs_user
+      - DB_PASSWORD_FILE=/run/secrets/db_password
+      - DB_NAME=pqrs_db
+      - JWT_SECRET_FILE=/run/secrets/jwt_secret
+      - GEMINI_API_KEY_FILE=/run/secrets/gemini_api_key
+      - PINECONE_API_KEY_FILE=/run/secrets/pinecone_api_key
+      - PINECONE_INDEX=documind
+      - N8N_WEBHOOK_URL=http://pqrs-n8n:5678/webhook/radicar-pqrs
+      - TRUST_PROXY=1  # Confiable únicamente porque Nginx es el único ingreso a backend_net
+    secrets:
+      - db_password
+      - jwt_secret
+      - gemini_api_key
+      - pinecone_api_key
+    networks:
+      - backend_net
+      - db_net
+    depends_on:
+      - pqrs-postgres
+
+  # ─── Base de Datos PostgreSQL 16 ───────────────────────────────────────────
+  pqrs-postgres:
+    image: postgres:16-alpine
+    container_name: pqrs-postgres
+    restart: unless-stopped
+    expose:
+      - "5432"  # Aislado en db_net, SIN mapeo de puertos al host (mitiga colisión y accesos indebidos)
+    environment:
+      POSTGRES_DB: pqrs_db
+      POSTGRES_USER: pqrs_user
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets:
+      - db_password
+    volumes:
+      - pqrs_pgdata:/var/lib/postgresql/data
+      - ./database/init_db.sql:/docker-entrypoint-initdb.d/01_init_pqrs.sql:ro
+      - ./database/documind_postgres_schema.sql:/docker-entrypoint-initdb.d/02_init_documind.sql:ro
+    networks:
+      - db_net
+
+  # ─── Motor de Orquestación n8n (Versión Fija 2.41.4) ───────────────────────
+  n8n:
+    image: n8nio/n8n:2.41.4
+    container_name: pqrs-n8n
+    restart: unless-stopped
+    expose:
+      - "5678"  # Acceso web a través de Nginx (subdominio o ruta con TLS)
+    environment:
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=https
+      - NODE_ENV=production
+      - WEBHOOK_URL=https://tudominio.com/webhook/
+      - GENERIC_TIMEZONE=America/Bogota
+      - TZ=America/Bogota
+      - N8N_RUNNERS_ENABLED=false
+    volumes:
+      - ../vafel-sweet/n8n_data:/home/node/.n8n
+    networks:
+      - backend_net
+      - db_net
+    depends_on:
+      - pqrs-postgres
+
+# ─── Segmentación Estricta de Redes ─────────────────────────────────────────
+networks:
+  frontend_net:
+    driver: bridge
+  backend_net:
+    driver: bridge
+    internal: false  # Permite comunicación proxy <-> backend
+  db_net:
+    driver: bridge
+    internal: true   # Ningún paquete entra o sale de Internet; solo backend y n8n tienen ruta
+
+# ─── Definición de Secretos Docker ──────────────────────────────────────────
+secrets:
+  db_password:
+    file: ./secrets/db_password.txt
+  jwt_secret:
+    file: ./secrets/jwt_secret.txt
+  gemini_api_key:
+    file: ./secrets/gemini_api_key.txt
+  pinecone_api_key:
+    file: ./secrets/pinecone_api_key.txt
+
+volumes:
+  pqrs_pgdata:
+    name: documind_pqrs_pgdata_prod

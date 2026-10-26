@@ -1,5 +1,14 @@
 import app from './app.js';
 import db from './config/db.js';
+import { obtenerClaveSecretaJWT } from './middleware/auth.middleware.js';
+
+// Verificación de seguridad en el arranque: falla de forma segura si falta JWT_SECRET
+try {
+  obtenerClaveSecretaJWT();
+} catch (startupErr) {
+  console.error(`❌ [Error de Seguridad en Arranque] ${startupErr.message}`);
+  process.exit(1);
+}
 
 const PORT = process.env.PORT || 5000;
 

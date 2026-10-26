@@ -8,6 +8,7 @@ import fs from 'fs';
 // Cargar variables de entorno
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+dotenv.config({ path: join(__dirname, '.env') });
 dotenv.config({ path: join(__dirname, 'config/.env') });
 
 // Rutas
@@ -20,6 +21,30 @@ import pqrsRoutes from './routes/pqrs.routes.js';
 
 const app = express();
 
+// ─── Hardening de Servidor y Cabeceras de Seguridad ──────────────────────────
+app.disable('x-powered-by');
+
+// Configuración de trust proxy:
+// - Por defecto es 'false' (entornos de desarrollo y pruebas para mitigar spoofing directo)
+// - En producción detrás de un reverse proxy autorizado (Nginx), se activa mediante TRUST_PROXY (ej. '1' o IP específica)
+const trustProxyEnv = process.env.TRUST_PROXY;
+if (trustProxyEnv === 'true' || trustProxyEnv === '1') {
+  app.set('trust proxy', 1);
+} else if (trustProxyEnv && trustProxyEnv !== 'false' && trustProxyEnv !== '0') {
+  const hopNum = Number(trustProxyEnv);
+  app.set('trust proxy', isNaN(hopNum) ? trustProxyEnv : hopNum);
+} else {
+  app.set('trust proxy', false);
+}
+
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('X-XSS-Protection', '0');
+  next();
+});
+
 // ─── Middlewares globales ────────────────────────────────────────────────────
 app.use(cors({
   origin: ['http://localhost:5173', 'http://localhost:3000'],
@@ -28,18 +53,16 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Archivos estáticos (para previsualización de documentos)
-app.use('/uploads', express.static(join(__dirname, 'uploads')));
+// ─── Protección de archivos físicos (/uploads) ────────────────────────────────
+// Eliminar el servicio estático público desprotegido.
+// Denegar acceso directo no autorizado a la carpeta física /uploads para mitigar fugas de archivos.
 app.use('/uploads', (req, res) => {
-  res.status(404).send(`
-    <div style="font-family: system-ui, -apple-system, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background-color: #f8fafc; color: #64748b; text-align: center; padding: 20px;">
-      <div style="font-size: 48px; margin-bottom: 16px;">📂</div>
-      <h2 style="color: #334155; margin: 0 0 8px 0;">Archivo original no disponible</h2>
-      <p style="margin: 0; max-width: 400px; line-height: 1.5;">El PDF físico no se encuentra en el servidor. Es probable que haya sido cargado antes de que se habilitara el historial visual de documentos.</p>
-      <p style="margin: 16px 0 0 0; font-size: 14px; background: #e2e8f0; padding: 8px 12px; border-radius: 8px; color: #475569;">💡 Tip: Vuelva a subir el documento para activar el visor.</p>
-    </div>
-  `);
+  return res.status(401).json({
+    ok: false,
+    mensaje: 'Acceso directo a /uploads no autorizado. Los archivos físicos están protegidos y requieren consulta mediante endpoints seguros.',
+  });
 });
+
 
 // Asegurar que el directorio de uploads existe
 const uploadsDir = join(__dirname, 'uploads');
@@ -67,6 +90,16 @@ app.get('/api/health', (req, res) => {
 
 // ─── Manejo global de errores ─────────────────────────────────────────────────
 app.use((err, req, res, next) => {
+  if (err.name === 'MulterError' || err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(400).json({
+      ok: false,
+      mensaje: err.code === 'LIMIT_FILE_SIZE'
+        ? 'El archivo excede el límite máximo permitido de 15 MB.'
+        : `Error en la carga del archivo: ${err.message}`,
+      codigo: err.code || 'MULTER_ERROR',
+    });
+  }
+
   console.error('Error no controlado:', err);
   res.status(err.status || 500).json({
     ok: false,

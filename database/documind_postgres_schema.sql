@@ -37,9 +37,9 @@ CREATE TABLE IF NOT EXISTS repositorios (
 INSERT INTO repositorios (id, nombre, descripcion, departamento, usuario_id)
 VALUES (
     1,
-    'Políticas y Manuales de Soporte',
-    'Base de conocimiento oficial para resolución y auditoría de PQRS',
-    'Soporte Técnico y Sistemas',
+    'Contratos Legales 2026',
+    'Base de conocimiento oficial para contratos y resoluciones legales',
+    'Legal',
     1
 ) ON CONFLICT (id) DO NOTHING;
 

@@ -3,6 +3,7 @@ import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { getSecret } from '../utils/secrets.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -20,7 +21,11 @@ if (isMysql) {
     host: process.env.DB_HOST || 'localhost',
     port: parseInt(process.env.DB_PORT, 10) || 3306,
     user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASS ?? process.env.DB_PASSWORD ?? '',
+    password: getSecret('DB_PASSWORD', {
+      aliases: ['DB_PASS'],
+      defaultValue: '',
+      disallowDefaultInProduction: false,
+    }),
     database: process.env.DB_NAME || 'documind_db',
     waitForConnections: true,
     connectionLimit: 10,
@@ -33,7 +38,12 @@ if (isMysql) {
     host: process.env.DB_HOST || 'localhost',
     port: parseInt(process.env.DB_PORT, 10) || 5432,
     user: process.env.DB_USER || 'pqrs_user',
-    password: process.env.DB_PASS ?? process.env.DB_PASSWORD ?? 'pqrs_password',
+    password: getSecret('DB_PASSWORD', {
+      aliases: ['DB_PASS'],
+      defaultValue: 'pqrs_password',
+      disallowDefaultInProduction: true,
+      mandatory: true,
+    }),
     database: process.env.DB_NAME || 'pqrs_db',
     max: 15,
     idleTimeoutMillis: 30000,

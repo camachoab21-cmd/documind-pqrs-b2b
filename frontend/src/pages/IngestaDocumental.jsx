@@ -12,8 +12,11 @@ import {
   Loader2,
   RefreshCw,
   FileSearch,
+  FolderOpen,
+  Plus,
+  FolderPlus,
 } from 'lucide-react';
-import { documentsAPI } from '../services/api';
+import { documentsAPI, repositoriesAPI } from '../services/api';
 
 const BADGE_MAP = {
   COMPLETADO: 'badge-completado',
@@ -43,7 +46,7 @@ function formatFecha(dateStr) {
   });
 }
 
-export default function IngestaDocumental({ selectedRepo }) {
+export default function IngestaDocumental({ selectedRepo, onRepoSelect }) {
   const [dragActive, setDragActive] = useState(false);
   const [documentos, setDocumentos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -52,8 +55,71 @@ export default function IngestaDocumental({ selectedRepo }) {
   const [uploadStatus, setUploadStatus] = useState(null); // { tipo, mensaje }
   const [docDetalle, setDocDetalle] = useState(null); // Modal de detalle
   const [eliminando, setEliminando] = useState(null);
+  const [previewBlobUrl, setPreviewBlobUrl] = useState(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
   const fileInputRef = useRef(null);
   const pollingRef = useRef(null);
+
+  // Gestión de repositorios directa en la página
+  const [repositorios, setRepositorios] = useState([]);
+  const [loadingRepos, setLoadingRepos] = useState(false);
+  const [modalNuevoRepo, setModalNuevoRepo] = useState(false);
+  const [formRepo, setFormRepo] = useState({ nombre: '', departamento: 'Legal', descripcion: '' });
+  const [guardandoRepo, setGuardandoRepo] = useState(false);
+
+  const previewBlobUrlRef = useRef(null);
+
+  // Manejo de ciclo de vida de Object URL seguro para vista previa autenticada con AbortController
+  useEffect(() => {
+    if (previewBlobUrlRef.current) {
+      URL.revokeObjectURL(previewBlobUrlRef.current);
+      previewBlobUrlRef.current = null;
+    }
+
+    if (!docDetalle?.url_descarga || docDetalle?.tipo_formato?.toUpperCase() !== 'PDF') {
+      setPreviewBlobUrl(null);
+      return;
+    }
+
+    const abortController = new AbortController();
+    setLoadingPreview(true);
+    const token = localStorage.getItem('documind_token');
+    const fullUrl = docDetalle.url_descarga.startsWith('http')
+      ? docDetalle.url_descarga
+      : `http://localhost:5000${docDetalle.url_descarga}`;
+
+    fetch(fullUrl, {
+      signal: abortController.signal,
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}: Error al cargar vista previa`);
+        return res.blob();
+      })
+      .then((blob) => {
+        const objectUrl = URL.createObjectURL(blob);
+        previewBlobUrlRef.current = objectUrl;
+        setPreviewBlobUrl(objectUrl);
+      })
+      .catch((err) => {
+        if (err.name === 'AbortError') return;
+        console.error('Error fetching preview blob:', err);
+        setPreviewBlobUrl(null);
+      })
+      .finally(() => {
+        if (!abortController.signal.aborted) {
+          setLoadingPreview(false);
+        }
+      });
+
+    return () => {
+      abortController.abort();
+      if (previewBlobUrlRef.current) {
+        URL.revokeObjectURL(previewBlobUrlRef.current);
+        previewBlobUrlRef.current = null;
+      }
+    };
+  }, [docDetalle?.url_descarga, docDetalle?.tipo_formato]);
 
   const cargarDocumentos = useCallback(async () => {
     try {
@@ -67,6 +133,61 @@ export default function IngestaDocumental({ selectedRepo }) {
     }
   }, [selectedRepo]);
 
+  const cargarRepositorios = useCallback(async () => {
+    try {
+      setLoadingRepos(true);
+      const res = await repositoriesAPI.list();
+      const repos = res.data?.repositorios || [];
+      setRepositorios(repos);
+      if (repos.length > 0 && onRepoSelect) {
+        if (!selectedRepo || !repos.some((r) => r.id === selectedRepo.id)) {
+          onRepoSelect(repos[0]);
+        }
+      }
+    } catch (err) {
+      console.warn('Error al obtener repositorios:', err.message);
+    } finally {
+      setLoadingRepos(false);
+    }
+  }, [selectedRepo, onRepoSelect]);
+
+  useEffect(() => {
+    cargarRepositorios();
+  }, []);
+
+  const handleCrearRepoSubmit = async (e) => {
+    e.preventDefault();
+    if (!formRepo.nombre.trim()) return;
+
+    setGuardandoRepo(true);
+    try {
+      const res = await repositoriesAPI.create({
+        nombre: formRepo.nombre.trim(),
+        departamento: formRepo.departamento,
+        descripcion: formRepo.descripcion.trim() || undefined,
+      });
+
+      const nuevo = res.data?.repositorio;
+      setModalNuevoRepo(false);
+      setFormRepo({ nombre: '', departamento: 'Legal', descripcion: '' });
+      await cargarRepositorios();
+      if (nuevo && onRepoSelect) {
+        onRepoSelect(nuevo);
+      }
+      setUploadStatus({
+        tipo: 'success',
+        mensaje: `✅ Repositorio '${nuevo?.nombre || formRepo.nombre}' creado y seleccionado exitosamente.`
+      });
+    } catch (err) {
+      setUploadStatus({
+        tipo: 'error',
+        mensaje: err.response?.data?.mensaje || 'Error al crear el repositorio.'
+      });
+    } finally {
+      setGuardandoRepo(false);
+    }
+  };
+
   useEffect(() => {
     cargarDocumentos();
     // Polling cada 5s para actualizar estados en tiempo real
@@ -78,7 +199,7 @@ export default function IngestaDocumental({ selectedRepo }) {
     if (!files || files.length === 0) return;
 
     if (!selectedRepo) {
-      setUploadStatus({ tipo: 'error', mensaje: '⚠️ Selecciona un repositorio en el sidebar antes de cargar.' });
+      setUploadStatus({ tipo: 'error', mensaje: '⚠️ Selecciona o crea un repositorio antes de cargar archivos.' });
       return;
     }
 
@@ -195,13 +316,70 @@ export default function IngestaDocumental({ selectedRepo }) {
         </button>
       </div>
 
-      {/* Banner repositorio no seleccionado */}
-      {!selectedRepo && (
-        <div className="mb-5 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3">
-          <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0" />
-          <p className="text-amber-700 text-sm">
-            <strong>Selecciona un repositorio</strong> en el sidebar izquierdo para cargar documentos en él.
-          </p>
+      {/* Barra de Selección y Control de Repositorio */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-4 mb-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 flex-shrink-0">
+            <FolderOpen className="w-5 h-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <label htmlFor="select-repositorio-activo" className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+              Repositorio de Ingesta Activo
+            </label>
+            <div className="flex items-center gap-2">
+              <select
+                id="select-repositorio-activo"
+                value={selectedRepo?.id || ''}
+                onChange={(e) => {
+                  const id = parseInt(e.target.value);
+                  const repo = repositorios.find((r) => r.id === id);
+                  if (repo && onRepoSelect) onRepoSelect(repo);
+                }}
+                disabled={loadingRepos || repositorios.length === 0}
+                className="w-full max-w-md bg-slate-50 hover:bg-slate-100/80 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
+              >
+                {repositorios.length === 0 ? (
+                  <option value="">(No hay repositorios disponibles)</option>
+                ) : (
+                  repositorios.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      📁 {r.nombre} ({r.departamento}) — {r.total_documentos || 0} docs
+                    </option>
+                  ))
+                )}
+              </select>
+              {loadingRepos && <Loader2 className="w-4 h-4 animate-spin text-slate-400" />}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button
+            id="btn-crear-repositorio-ingesta"
+            onClick={() => setModalNuevoRepo(true)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl shadow-sm hover:shadow transition-all"
+          >
+            <FolderPlus className="w-4 h-4" />
+            <span>+ Nuevo Repositorio</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Banner si no hay repositorios creados */}
+      {repositorios.length === 0 && !loadingRepos && (
+        <div className="mb-5 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0" />
+            <p className="text-amber-800 text-sm">
+              No tienes ningún repositorio creado todavía. Crea tu primer repositorio para comenzar a subir documentos.
+            </p>
+          </div>
+          <button
+            onClick={() => setModalNuevoRepo(true)}
+            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-lg shadow-sm"
+          >
+            Crear Repositorio Ahora
+          </button>
         </div>
       )}
 
@@ -334,7 +512,7 @@ export default function IngestaDocumental({ selectedRepo }) {
                         {doc.tipo_formato}
                       </span>
                     </td>
-                    <td className="p-4 text-slate-500">{formatBytes(doc.tamaño_bytes)}</td>
+                    <td className="p-4 text-slate-500">{formatBytes(doc.tamano_bytes ?? doc.tamaño_bytes)}</td>
                     <td className="p-4 font-semibold text-indigo-600">
                       {doc.categoria_detectada
                         ? `${CATEGORIA_ICON[doc.categoria_detectada] || '📁'} ${doc.categoria_detectada}`
@@ -468,22 +646,128 @@ export default function IngestaDocumental({ selectedRepo }) {
               {/* Ficha técnica */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-100 text-xs text-slate-600">
                 <div className="bg-slate-50 p-2.5 rounded-lg"><span className="text-slate-400 block font-medium">Formato:</span> <span className="font-semibold text-slate-700 uppercase">{docDetalle.tipo_formato}</span></div>
-                <div className="bg-slate-50 p-2.5 rounded-lg"><span className="text-slate-400 block font-medium">Tamaño:</span> <span className="font-semibold text-slate-700">{formatBytes(docDetalle.tamaño_bytes)}</span></div>
+                <div className="bg-slate-50 p-2.5 rounded-lg"><span className="text-slate-400 block font-medium">Tamaño:</span> <span className="font-semibold text-slate-700">{formatBytes(docDetalle.tamano_bytes ?? docDetalle.tamaño_bytes)}</span></div>
                 <div className="bg-slate-50 p-2.5 rounded-lg"><span className="text-slate-400 block font-medium">Estado:</span> <span className="font-semibold text-emerald-600">{docDetalle.estado_procesamiento}</span></div>
                 <div className="bg-slate-50 p-2.5 rounded-lg"><span className="text-slate-400 block font-medium">Cargado:</span> <span className="font-semibold text-slate-700">{formatFecha(docDetalle.creado_en)}</span></div>
               </div>
 
-              {/* Visor de Documento embebido */}
+              {/* Visor de Documento embebido con URL de objeto temporal autenticada (sin credenciales en URL) */}
               {docDetalle.url_descarga && docDetalle.tipo_formato === 'PDF' && (
-                <div className="mt-4 border border-slate-200 rounded-xl overflow-hidden h-[500px]">
-                  <iframe 
-                    src={`http://localhost:5000${docDetalle.url_descarga}`} 
-                    className="w-full h-full bg-slate-100" 
-                    title="Visor de Documento"
-                  />
+                <div className="mt-4 border border-slate-200 rounded-xl overflow-hidden h-[500px] flex items-center justify-center bg-slate-100">
+                  {loadingPreview ? (
+                    <div className="flex flex-col items-center gap-2 text-slate-500">
+                      <Loader2 className="w-6 h-6 animate-spin text-indigo-600" />
+                      <span className="text-xs">Cargando vista previa protegida...</span>
+                    </div>
+                  ) : previewBlobUrl ? (
+                    <iframe 
+                      src={previewBlobUrl} 
+                      className="w-full h-full bg-slate-100" 
+                      title="Visor de Documento"
+                    />
+                  ) : (
+                    <div className="text-xs text-rose-500">No fue posible previsualizar el documento de forma segura.</div>
+                  )}
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Crear Repositorio */}
+      {modalNuevoRepo && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden">
+            <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-slate-50">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-indigo-50 text-indigo-600">
+                  <FolderPlus className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800 text-base">Crear Repositorio Documental</h3>
+                  <p className="text-slate-500 text-xs">Carpeta lógica para almacenamiento e indexación RAG</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalNuevoRepo(false)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCrearRepoSubmit} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Nombre del Repositorio *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ej: Contratos Proveedores 2026"
+                  value={formRepo.nombre}
+                  onChange={(e) => setFormRepo({ ...formRepo, nombre: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Departamento / Área *
+                </label>
+                <select
+                  value={formRepo.departamento}
+                  onChange={(e) => setFormRepo({ ...formRepo, departamento: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer"
+                >
+                  <option value="Legal">Legal</option>
+                  <option value="Financiero">Financiero</option>
+                  <option value="Recursos Humanos">Recursos Humanos</option>
+                  <option value="Soporte Técnico y Sistemas">Soporte Técnico y Sistemas</option>
+                  <option value="Control de Calidad y Garantías">Control de Calidad y Garantías</option>
+                  <option value="Operaciones">Operaciones</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Descripción (Opcional)
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="Descripción del tipo de documentos que alojará este repositorio..."
+                  value={formRepo.descripcion}
+                  onChange={(e) => setFormRepo({ ...formRepo, descripcion: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setModalNuevoRepo(false)}
+                  className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={guardandoRepo || !formRepo.nombre.trim()}
+                  className="flex items-center gap-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-semibold rounded-xl shadow-md transition-all"
+                >
+                  {guardandoRepo ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Guardando...
+                    </>
+                  ) : (
+                    'Crear Repositorio'
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -15,26 +15,41 @@ export async function listarRepositorios(req, res) {
         FROM repositorios r
         JOIN usuarios u ON r.usuario_id = u.id
         LEFT JOIN documentos d ON r.id = d.repositorio_id
-        GROUP BY r.id
+        GROUP BY r.id, u.nombre
         ORDER BY r.creado_en DESC
       `;
       params = [];
     } else {
-      let depto = 'Legal';
-      if (req.user.rol === 'FINANCIERO') depto = 'Financiero';
-      if (req.user.rol === 'RECLUTADOR') depto = 'Recursos Humanos';
+      let depto = null;
+      if (req.user.rol === 'LEGAL') depto = 'Legal';
+      else if (req.user.rol === 'FINANCIERO') depto = 'Financiero';
+      else if (req.user.rol === 'RECLUTADOR') depto = 'Recursos Humanos';
 
-      sql = `
-        SELECT r.*, u.nombre AS creado_por,
-               COUNT(d.id) AS total_documentos
-        FROM repositorios r
-        JOIN usuarios u ON r.usuario_id = u.id
-        LEFT JOIN documentos d ON r.id = d.repositorio_id
-        WHERE r.departamento = ? OR r.usuario_id = ?
-        GROUP BY r.id
-        ORDER BY r.creado_en DESC
-      `;
-      params = [depto, req.user.id];
+      if (depto) {
+        sql = `
+          SELECT r.*, u.nombre AS creado_por,
+                 COUNT(d.id) AS total_documentos
+          FROM repositorios r
+          JOIN usuarios u ON r.usuario_id = u.id
+          LEFT JOIN documentos d ON r.id = d.repositorio_id
+          WHERE r.departamento = ? OR r.usuario_id = ?
+          GROUP BY r.id, u.nombre
+          ORDER BY r.creado_en DESC
+        `;
+        params = [depto, req.user.id];
+      } else {
+        sql = `
+          SELECT r.*, u.nombre AS creado_por,
+                 COUNT(d.id) AS total_documentos
+          FROM repositorios r
+          JOIN usuarios u ON r.usuario_id = u.id
+          LEFT JOIN documentos d ON r.id = d.repositorio_id
+          WHERE r.usuario_id = ?
+          GROUP BY r.id, u.nombre
+          ORDER BY r.creado_en DESC
+        `;
+        params = [req.user.id];
+      }
     }
 
     const repositorios = await db.query(sql, params);

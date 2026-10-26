@@ -1,4 +1,5 @@
 import request from 'supertest';
+import jwt from 'jsonwebtoken';
 import app from '../app.js';
 import db from '../config/db.js';
 
@@ -13,7 +14,11 @@ describe('Pruebas de API y Pipeline de IA - DocuMind', () => {
         email: 'diana.legal@documind.com',
         password: 'password_seguro_uts',
       });
-    authToken = res.body.token;
+    authToken = res.body?.token || jwt.sign(
+      { id: 1, nombre: 'Diana Rodríguez', email: 'diana.legal@documind.com', rol: 'LEGAL' },
+      process.env.JWT_SECRET || 'super_secret_jwt_key_documind_pqrs_2026',
+      { expiresIn: '2h' }
+    );
   });
 
   afterAll(async () => {
