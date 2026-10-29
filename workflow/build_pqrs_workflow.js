@@ -1324,6 +1324,6 @@ const workflow = {
     "executionTimeout": 120
   }
 };
-const output = path.join(__dirname, 'workflow_pqrs_soporte.json');
+const output = path.join(__dirname, 'n8n_workflow.json');
 fs.writeFileSync(output, JSON.stringify(workflow, null, 2) + '\n', 'utf8');
 console.log('JSON generado: ' + output + '. Importe este archivo desde el editor n8n.');

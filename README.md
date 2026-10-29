@@ -2,6 +2,14 @@
 
 Sistema empresarial integral que combina la **Gestión Documental Inteligente (DocuMind)** con la **Mesa de Ayuda y Automatización de PQRS B2B**, potenciado por modelos de lenguaje de última generación (**Google Gemini**), base de datos vectorial (**Pinecone**) y orquestación de flujos de trabajo (**n8n**).
 
+## Tercer corte: semana 1
+
+Entrega de diseño: [PDF de dos páginas](docs/SEMANA_1_DISENO.pdf) y [fuente editable](docs/SEMANA_1_DISENO.md). Incluye inventario de los cinco flujos, elección de Ruta A, caso de visión y arquitectura propuesta. Diagnóstico del código y pendientes: [STATUS_AUDIT.md](STATUS_AUDIT.md).
+
+Archivos vigentes: `index.html` es el portal autónomo PQRS de los cortes anteriores; `frontend/index.html` inicia la plataforma React; `workflow/n8n_workflow.json` es la exportación importable en n8n. Los dos archivos de `database/` son complementarios. Para regenerar el workflow: `node workflow/build_pqrs_workflow.js`.
+
+La entrega de semana 1 es documental. La migración, OCR y despliegue descritos son trabajo futuro; las afirmaciones históricas del resto del README deben leerse junto con la auditoría, que distingue implementación de funcionamiento comprobado. No se ha verificado una conexión real con PostgreSQL, n8n, SMTP o proveedores de IA en esta revisión.
+
 ---
 
 ## 🏛️ 1. Visión General de la Plataforma
