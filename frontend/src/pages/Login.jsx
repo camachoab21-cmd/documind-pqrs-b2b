@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Brain, Mail, Lock, Eye, EyeOff, Loader2, AlertCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -61,7 +61,7 @@ export default function Login() {
           {/* Formulario */}
           <form id="form-login" onSubmit={handleSubmit} className="space-y-5">
             <div>
-              <label className="block text-slate-300 text-xs font-semibold mb-2 uppercase tracking-wide">
+              <label htmlFor="input-email" className="block text-slate-300 text-xs font-semibold mb-2 uppercase tracking-wide">
                 Correo Electrónico
               </label>
               <div className="relative">
@@ -69,6 +69,7 @@ export default function Login() {
                 <input
                   id="input-email"
                   type="email"
+                  autoComplete="username"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="usuario@documind.com"
@@ -79,7 +80,7 @@ export default function Login() {
             </div>
 
             <div>
-              <label className="block text-slate-300 text-xs font-semibold mb-2 uppercase tracking-wide">
+              <label htmlFor="input-password" className="block text-slate-300 text-xs font-semibold mb-2 uppercase tracking-wide">
                 Contraseña
               </label>
               <div className="relative">
@@ -87,6 +88,7 @@ export default function Login() {
                 <input
                   id="input-password"
                   type={showPassword ? 'text' : 'password'}
+                  autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
@@ -95,6 +97,8 @@ export default function Login() {
                 />
                 <button
                   type="button"
+                  aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  aria-pressed={showPassword}
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
                 >
@@ -105,7 +109,7 @@ export default function Login() {
 
             {/* Error */}
             {error && (
-              <div className="flex items-center gap-2 p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl animate-fade-in">
+              <div role="alert" className="flex items-center gap-2 p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl animate-fade-in">
                 <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0" />
                 <p className="text-rose-300 text-xs">{error}</p>
               </div>
@@ -130,6 +134,9 @@ export default function Login() {
 
           {/* Divider */}
           <div className="mt-6 pt-6 border-t border-white/5 text-center">
+            <Link to="/semana-1" className="mb-4 block text-sm font-medium text-cyan-300 hover:text-cyan-200 hover:underline">
+              Ver entrega de semana 1
+            </Link>
             <p className="text-slate-600 text-xs">
               DocuMind v1.0 — Proyecto Integrador UTS
             </p>

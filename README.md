@@ -6,6 +6,19 @@ Sistema empresarial integral que combina la **Gestión Documental Inteligente (D
 
 Entrega de diseño: [PDF de dos páginas](docs/SEMANA_1_DISENO.pdf) y [fuente editable](docs/SEMANA_1_DISENO.md). Incluye inventario de los cinco flujos, elección de Ruta A, caso de visión y arquitectura propuesta. Diagnóstico del código y pendientes: [STATUS_AUDIT.md](STATUS_AUDIT.md).
 
+La app muestra esos cuatro requisitos en **Semana 1 · Diseño**, disponible desde el login y el menú. La ruta `/semana-1` permite comparar arquitectura actual/propuesta y descargar el PDF, sin requerir conexión a los servicios de negocio. Para verla localmente:
+
+```powershell
+cd frontend
+npm ci
+npm run dev
+# Abrir http://localhost:5173/semana-1
+```
+
+Esta vista presenta el entregable académico: identifica expresamente qué está en el código y qué está pendiente. No representa una migración ejecutada ni un módulo OCR operativo.
+
+Validación del 29/10/2026: [prueba de escritorio automatizada](docs/PRUEBA_ESCRITORIO_SEMANA_1.md), con 24 comprobaciones aprobadas sobre la vista de semana 1 y su acceso desde el login. Incluye captura y resultados; el informe distingue estos controles de las integraciones aún no verificadas. La compilación con `npm run build` incluye el PDF como recurso del paquete.
+
 Archivos vigentes: `index.html` es el portal autónomo PQRS de los cortes anteriores; `frontend/index.html` inicia la plataforma React; `workflow/n8n_workflow.json` es la exportación importable en n8n. Los dos archivos de `database/` son complementarios. Para regenerar el workflow: `node workflow/build_pqrs_workflow.js`.
 
 La entrega de semana 1 es documental. La migración, OCR y despliegue descritos son trabajo futuro; las afirmaciones históricas del resto del README deben leerse junto con la auditoría, que distingue implementación de funcionamiento comprobado. No se ha verificado una conexión real con PostgreSQL, n8n, SMTP o proveedores de IA en esta revisión.

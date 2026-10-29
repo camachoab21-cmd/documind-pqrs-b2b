@@ -9,6 +9,7 @@ import ChatRAG from './pages/ChatRAG';
 import DashboardTI from './pages/DashboardTI';
 import GestionPqrs from './pages/GestionPqrs';
 import PortalRadicacionPublica from './pages/PortalRadicacionPublica';
+import SemanaUno from './pages/SemanaUno';
 
 /**
  * Layout principal de la aplicación (sidebar + contenido)
@@ -68,6 +69,9 @@ export default function App() {
 
       {/* Ruta pública de radicación y seguimiento ciudadano */}
       <Route path="/radicar" element={<PortalRadicacionPublica />} />
+
+      {/* Entregable académico público; no contiene datos de usuarios ni tickets. */}
+      <Route path="/semana-1" element={<SemanaUno />} />
 
       {/* Rutas protegidas con layout */}
       <Route

@@ -5,7 +5,7 @@
 
 ## 1. Problema, objetivo y alcance
 
-La plataforma combina radicación y seguimiento PQRS, gestión de agentes y documentos, y chatbot RAG. Conserva un portal HTML y una aplicación React/Express. La automatización PQRS reside en n8n y funciones de PostgreSQL; el chatbot y el análisis documental ya están programados en Express. El objetivo es conservar esas funciones, retirar la dependencia operativa de n8n y digitalizar formularios físicos PQRS. Esta semana entrega únicamente inventario, decisiones y arquitectura; no incorpora funcionalidades al aplicativo.
+La plataforma combina radicación y seguimiento PQRS, gestión de agentes y documentos, y chatbot RAG. Conserva un portal HTML y una aplicación React/Express. La automatización PQRS reside en n8n y funciones de PostgreSQL; el chatbot y el análisis documental ya están programados en Express. El objetivo es conservar esas funciones, retirar la dependencia operativa de n8n y digitalizar formularios físicos PQRS. La vista `/semana-1` de la app presenta este inventario, las decisiones y los diagramas actual/propuesto, y permite descargar este PDF. Las automatizaciones nuevas continúan pendientes de implementación.
 
 ## 2. Inventario verificable de automatizaciones
 

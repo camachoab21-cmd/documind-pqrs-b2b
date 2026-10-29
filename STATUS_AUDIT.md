@@ -4,6 +4,8 @@
 
 ## 1. Resumen ejecutivo
 
+**Actualización 29/10/2026:** el diseño de semana 1 está integrado en React mediante `/semana-1`, con acceso público desde el login y enlace en el menú. Permite consultar el inventario, alternar arquitectura actual/propuesta y descargar el mismo PDF de dos páginas. Se instalaron las dependencias del frontend, compiló Vite y se ejecutaron 24 comprobaciones de navegador, todas aprobadas. Se corrigieron etiquetas del login, nombre del control de contraseña, foco visible y navegación de la tabla por teclado; se añadió respeto a movimiento reducido. Evidencia y límites en [PRUEBA_ESCRITORIO_SEMANA_1.md](docs/PRUEBA_ESCRITORIO_SEMANA_1.md). Las verificaciones originales siguientes corresponden al 28/10; la deuda de backend/n8n/DB no se da por resuelta con esta vista.
+
 El sistema es más amplio que tres archivos: integra un portal HTML autónomo con cinco webhooks, una aplicación React, API Express, PostgreSQL, SMTP y servicios Gemini/Pinecone. Hay implementación de radicación, seguimiento, gestión, CSAT, documentos y chat. No hay evidencia de un despliegue conectado en esta sesión y existen divergencias entre los dos clientes. El workflow exportado está inactivo y no incluye credenciales asignadas.
 
 La semana 1 queda cubierta documentalmente por [SEMANA_1_DISENO.pdf](docs/SEMANA_1_DISENO.pdf), con fuente [Markdown](docs/SEMANA_1_DISENO.md): cinco flujos inventariados, Ruta A elegida, lectura de formularios físicos PQRS y arquitectura propuesta. OCR, migración y despliegue siguen siendo trabajo futuro. No se presentan como funcionalidades implementadas.
@@ -224,6 +226,9 @@ docs/nginx.conf.example
 docs/PANEL_SUSTENTACION.html
 docs/PREGUNTAS_DEFENSA_DOCUMIND.md
 docs/PRESENTACION_DOCUMIND.md
+docs/PRUEBA_ESCRITORIO_SEMANA_1.md
+docs/evidencias/semana1-escritorio.jpg
+docs/evidencias/semana1-resultados.json
 docs/RESUMEN_EJECUTIVO_DOCUMIND.md
 docs/SEMANA_1_DISENO.md
 docs/SEMANA_1_DISENO.pdf
@@ -246,6 +251,7 @@ frontend/src/pages/GestionPqrs.jsx
 frontend/src/pages/IngestaDocumental.jsx
 frontend/src/pages/Login.jsx
 frontend/src/pages/PortalRadicacionPublica.jsx
+frontend/src/pages/SemanaUno.jsx
 frontend/src/services/api.js
 frontend/tailwind.config.js
 frontend/vite.config.js

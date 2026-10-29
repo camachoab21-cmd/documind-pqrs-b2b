@@ -13,6 +13,7 @@ import {
   Shield,
   Loader2,
   Send,
+  ClipboardList,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { repositoriesAPI } from '../services/api';
@@ -88,6 +89,7 @@ export default function Sidebar({ onRepoSelect, selectedRepo }) {
   };
 
   const navItems = [
+    { to: '/semana-1', icon: ClipboardList, label: 'Semana 1 · Diseño' },
     { to: '/pqrs', icon: LifeBuoy, label: 'Mesa de Ayuda PQRS' },
     { to: '/radicar', icon: Send, label: 'Portal Radicación' },
     { to: '/ingesta', icon: UploadCloud, label: 'Ingesta Documental' },

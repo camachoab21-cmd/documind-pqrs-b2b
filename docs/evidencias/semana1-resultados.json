@@ -1,0 +1,115 @@
+[
+  {
+    "caso": "S1-01 ruta pública",
+    "ok": true
+  },
+  {
+    "caso": "S1-02 cinco flujos",
+    "ok": true
+  },
+  {
+    "caso": "S1-03 arquitectura actual inicial",
+    "ok": true
+  },
+  {
+    "caso": "S1-04 cambiar propuesta",
+    "ok": true
+  },
+  {
+    "caso": "S1-05 teclado Enter",
+    "ok": true
+  },
+  {
+    "caso": "S1-06 teclado Espacio",
+    "ok": true
+  },
+  {
+    "caso": "S1-07 descargar PDF",
+    "ok": true
+  },
+  {
+    "caso": "S1-09 volver al login",
+    "ok": true
+  },
+  {
+    "caso": "S1-10 campos obligatorios",
+    "ok": true
+  },
+  {
+    "caso": "S1-11 formato correo",
+    "ok": true
+  },
+  {
+    "caso": "S1-13 mostrar contraseña",
+    "ok": true
+  },
+  {
+    "caso": "S1-14 ocultar contraseña",
+    "ok": true
+  },
+  {
+    "caso": "S1-12 etiquetas de campos",
+    "ok": true
+  },
+  {
+    "caso": "S1-15 error de servidor",
+    "ok": true
+  },
+  {
+    "caso": "S1-16 acceso desde login",
+    "ok": true
+  },
+  {
+    "caso": "S1-17 recargar ruta directa",
+    "ok": true
+  },
+  {
+    "caso": "S1-18 compilado y enlace PDF",
+    "ok": true
+  },
+  {
+    "caso": "S1-08 diseño 1440px",
+    "ok": true,
+    "detalle": {
+      "overflow": false,
+      "width": 1440
+    }
+  },
+  {
+    "caso": "S1-08 diseño 768px",
+    "ok": true,
+    "detalle": {
+      "width": 768,
+      "overflow": false
+    }
+  },
+  {
+    "caso": "S1-08 diseño 390px",
+    "ok": true,
+    "detalle": {
+      "overflow": false,
+      "width": 390
+    }
+  },
+  {
+    "caso": "S1-08 diseño 320px",
+    "ok": true,
+    "detalle": {
+      "overflow": false,
+      "width": 320
+    }
+  },
+  {
+    "caso": "S1-19 PDF en producción",
+    "ok": true
+  },
+  {
+    "caso": "S1-20 estado de selección",
+    "ok": true
+  },
+  {
+    "caso": "S1-21 tabla por teclado y foco",
+    "ok": true,
+    "detalle": "ArrowRight desplazó 40px; contorno visible; ancho real 320px sin desbordamiento de página."
+  }
+]

@@ -78,7 +78,7 @@ body {
 
   /* Botón secundario */
   .btn-secondary {
-    @apply bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-2 px-5 rounded-lg transition-all duration-200 focus:outline-none;
+    @apply bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-2 px-5 rounded-lg transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2;
   }
 
   /* Botón de peligro */
@@ -165,4 +165,14 @@ body {
   );
   background-size: 200% 100%;
   animation: shimmer 1.5s linear infinite;
+}
+
+/* Respeta la preferencia de movimiento del sistema en toda la aplicación. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
